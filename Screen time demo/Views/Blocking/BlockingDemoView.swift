@@ -1,54 +1,46 @@
 //
-//  ContentView.swift
+//  BlockingDemoView.swift
 //  Screen time demo
+//
+//  Phase 0 standalone blocking test: request permission, pick apps, run a local
+//  10-minute block. Kept reachable from Profile for on-device verification.
 //
 
 import FamilyControls
 import SwiftUI
 
-struct ContentView: View {
+struct BlockingDemoView: View {
     private static let blockDurationSeconds = 600
 
     @StateObject private var authManager = AuthorizationManager.shared
+    @StateObject private var blocklist = BlocklistStore.shared
 
-    @State private var selection = FamilyActivitySelection()
     @State private var showPicker = false
     @State private var isBlocking = false
     @State private var timeRemaining = 0
     @State private var blockTask: Task<Void, Never>?
 
-    private var selectedCount: Int {
-        selection.applicationTokens.count + selection.categoryTokens.count
-    }
-
     private var canStartBlock: Bool {
-        authManager.isAuthorized && selectedCount > 0 && !isBlocking
+        authManager.isAuthorized && blocklist.hasSelection && !isBlocking
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                statusSection
-
-                VStack(spacing: 12) {
-                    permissionButton
-                    chooseAppsButton
-                    startBlockButton
-                    stopButton
-                }
-
-                Spacer(minLength: 0)
+        VStack(spacing: 24) {
+            statusSection
+            VStack(spacing: 12) {
+                permissionButton
+                chooseAppsButton
+                startBlockButton
+                stopButton
             }
-            .padding()
-            .navigationTitle("Screen Time Demo")
-            .familyActivityPicker(isPresented: $showPicker, selection: $selection)
-            .onAppear {
-                authManager.refreshAuthorizationStatus()
-            }
+            Spacer(minLength: 0)
         }
+        .padding()
+        .navigationTitle("Blocking Test")
+        .navigationBarTitleDisplayMode(.inline)
+        .familyActivityPicker(isPresented: $showPicker, selection: $blocklist.selection)
+        .onAppear { authManager.refreshAuthorizationStatus() }
     }
-
-    // MARK: - Status
 
     private var statusSection: some View {
         VStack(spacing: 16) {
@@ -60,20 +52,14 @@ struct ContentView: View {
                 .foregroundStyle(authManager.isAuthorized ? .green : .secondary)
                 Spacer()
             }
-
             HStack {
-                Text("Selected to block")
-                    .foregroundStyle(.secondary)
+                Text("Selected to block").foregroundStyle(.secondary)
                 Spacer()
-                Text("\(selectedCount)")
-                    .fontWeight(.semibold)
+                Text("\(blocklist.selectedCount)").fontWeight(.semibold)
             }
-
             if isBlocking {
                 VStack(spacing: 8) {
-                    Text("Blocking active")
-                        .font(.headline)
-                        .foregroundStyle(.orange)
+                    Text("Blocking active").font(.headline).foregroundStyle(.orange)
                     Text(formattedTime(timeRemaining))
                         .font(.system(size: 48, weight: .bold, design: .rounded))
                         .monospacedDigit()
@@ -88,13 +74,9 @@ struct ContentView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Buttons
-
     private var permissionButton: some View {
         Button {
-            Task {
-                await authManager.requestAuthorization()
-            }
+            Task { await authManager.requestAuthorization() }
         } label: {
             Label(
                 authManager.isAuthorized ? "Screen Time Permission Granted" : "Request Screen Time Permission",
@@ -110,8 +92,7 @@ struct ContentView: View {
         Button {
             showPicker = true
         } label: {
-            Label("Choose Apps to Block", systemImage: "apps.iphone")
-                .frame(maxWidth: .infinity)
+            Label("Choose Apps to Block", systemImage: "apps.iphone").frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
         .disabled(!authManager.isAuthorized || isBlocking)
@@ -121,8 +102,7 @@ struct ContentView: View {
         Button {
             startBlock()
         } label: {
-            Label("Start 10-Minute Block", systemImage: "timer")
-                .frame(maxWidth: .infinity)
+            Label("Start 10-Minute Block", systemImage: "timer").frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .tint(.orange)
@@ -133,17 +113,14 @@ struct ContentView: View {
         Button(role: .destructive) {
             stopBlock()
         } label: {
-            Label("Stop / Unblock Now", systemImage: "stop.fill")
-                .frame(maxWidth: .infinity)
+            Label("Stop / Unblock Now", systemImage: "stop.fill").frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
         .disabled(!isBlocking)
     }
 
-    // MARK: - Blocking
-
     private func startBlock() {
-        BlockingManager.shared.block(selection: selection)
+        BlockingManager.shared.block(selection: blocklist.selection)
         isBlocking = true
         timeRemaining = Self.blockDurationSeconds
 
@@ -152,19 +129,15 @@ struct ContentView: View {
             var remaining = Self.blockDurationSeconds
             while remaining > 0 {
                 if Task.isCancelled { return }
-                await MainActor.run {
-                    timeRemaining = remaining
-                }
+                timeRemaining = remaining
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if Task.isCancelled { return }
                 remaining -= 1
             }
-            await MainActor.run {
-                BlockingManager.shared.clear()
-                isBlocking = false
-                timeRemaining = 0
-                blockTask = nil
-            }
+            BlockingManager.shared.clear()
+            isBlocking = false
+            timeRemaining = 0
+            blockTask = nil
         }
     }
 
@@ -177,12 +150,10 @@ struct ContentView: View {
     }
 
     private func formattedTime(_ seconds: Int) -> String {
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%d:%02d", minutes, secs)
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 
 #Preview {
-    ContentView()
+    NavigationStack { BlockingDemoView() }
 }

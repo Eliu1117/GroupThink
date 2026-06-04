@@ -1,0 +1,65 @@
+rules_version = '2';
+
+// Security rules for Study Hall.
+// Principle: users read/write only their own user doc; group data is readable and
+// writable only by members of that group.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // users/{uid}
+    match /users/{uid} {
+      // Any signed-in user can read profiles (needed to show group member names).
+      allow read: if isSignedIn();
+      allow create, update: if isSelf(uid);
+      allow delete: if false;
+    }
+
+    // groups/{groupId}
+    match /groups/{groupId} {
+      function groupData() {
+        return get(/databases/$(database)/documents/groups/$(groupId)).data;
+      }
+      function isMember() {
+        return isSignedIn() && request.auth.uid in resource.data.memberUids;
+      }
+
+      // Anyone signed in can look up a group (needed to join via invite code).
+      allow read: if isSignedIn();
+
+      // Only the creator can create, and they must include themselves as a member.
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.auth.uid in request.resource.data.memberUids;
+
+      // Members can update; also allow a non-member to add ONLY themselves (join).
+      allow update: if isMember()
+        || (isSignedIn()
+            && request.resource.data.memberUids.hasAll(resource.data.memberUids)
+            && request.resource.data.memberUids.removeAll(resource.data.memberUids) == [request.auth.uid]);
+
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+
+      // groups/{groupId}/sessions/{sessionId}
+      match /sessions/{sessionId} {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        function isGroupMember() {
+          return isSignedIn() && request.auth.uid in parentGroup().memberUids;
+        }
+
+        allow read: if isGroupMember();
+        allow create, update: if isGroupMember();
+        allow delete: if isGroupMember();
+      }
+    }
+  }
+}

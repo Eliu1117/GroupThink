@@ -1,0 +1,24 @@
+# Secrets — never commit
+GoogleService-Info.plist
+*.p12
+*.mobileprovision
+serviceAccountKey.json
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+.DS_Store
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Cloud Functions
+functions/node_modules/
+functions/.env
+*.log
+
+# Firebase
+.firebase/
