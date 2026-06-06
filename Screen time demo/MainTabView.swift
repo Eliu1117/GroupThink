@@ -13,7 +13,7 @@ struct MainTabView: View {
                     Label("Home", systemImage: "house.fill")
                 }
 
-            GroupsPlaceholderView()
+            GroupsView()
                 .tabItem {
                     Label("Groups", systemImage: "person.3.fill")
                 }
@@ -22,19 +22,6 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Profile", systemImage: "person.circle.fill")
                 }
-        }
-    }
-}
-
-private struct GroupsPlaceholderView: View {
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "No Groups Yet",
-                systemImage: "person.3",
-                description: Text("Create or join a study hall group — coming in Phase 2.")
-            )
-            .navigationTitle("Groups")
         }
     }
 }

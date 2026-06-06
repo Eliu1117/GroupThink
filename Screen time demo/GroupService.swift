@@ -1,0 +1,176 @@
+//
+//  GroupService.swift
+//  Screen time demo
+//
+//  Firestore reads/writes for the `groups` collection.
+//
+
+import FirebaseFirestore
+import Foundation
+
+enum GroupServiceError: LocalizedError {
+    case invalidInviteCode
+    case alreadyMember
+    case notSignedIn
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidInviteCode:
+            return "No group found for that invite code."
+        case .alreadyMember:
+            return "You're already a member of this group."
+        case .notSignedIn:
+            return "You must be signed in to manage groups."
+        }
+    }
+}
+
+final class GroupService {
+    static let shared = GroupService()
+
+    private let db = Firestore.firestore()
+
+    private init() {}
+
+    private var groups: CollectionReference {
+        db.collection("groups")
+    }
+
+    // MARK: - Create
+
+    /// Creates a group and returns its document ID.
+    func createGroup(name: String, creatorUID: String) async throws -> String {
+        let ref = groups.document()
+        let inviteCode = try await uniqueInviteCode()
+
+        let data: [String: Any] = [
+            "name": name,
+            "inviteCode": inviteCode,
+            "createdBy": creatorUID,
+            "memberUids": [creatorUID],
+        ]
+
+        try await ref.setData(data)
+        return ref.documentID
+    }
+
+    // MARK: - Join
+
+    /// Finds a group by invite code and atomically adds the user to `memberUids`.
+    @discardableResult
+    func joinGroup(inviteCode: String, userUID: String) async throws -> Group {
+        let normalized = inviteCode
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !normalized.isEmpty else {
+            throw GroupServiceError.invalidInviteCode
+        }
+
+        let snapshot = try await groups
+            .whereField("inviteCode", isEqualTo: normalized)
+            .limit(to: 1)
+            .getDocuments()
+
+        guard let document = snapshot.documents.first else {
+            throw GroupServiceError.invalidInviteCode
+        }
+
+        guard let group = Group(id: document.documentID, document: document) else {
+            throw GroupServiceError.invalidInviteCode
+        }
+
+        guard !group.memberUids.contains(userUID) else {
+            throw GroupServiceError.alreadyMember
+        }
+
+        try await document.reference.updateData([
+            "memberUids": FieldValue.arrayUnion([userUID]),
+        ])
+
+        return Group(
+            id: group.id,
+            name: group.name,
+            inviteCode: group.inviteCode,
+            createdBy: group.createdBy,
+            memberUids: group.memberUids + [userUID]
+        )
+    }
+
+    // MARK: - Listen
+
+    /// Real-time listener for groups the user belongs to.
+    func observeGroups(
+        for userUID: String,
+        onChange: @escaping (Result<[Group], Error>) -> Void
+    ) -> ListenerRegistration {
+        groups
+            .whereField("memberUids", arrayContains: userUID)
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    onChange(.failure(error))
+                    return
+                }
+
+                let groups = snapshot?.documents.compactMap { doc in
+                    Group(id: doc.documentID, document: doc)
+                } ?? []
+
+                let sorted = groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                onChange(.success(sorted))
+            }
+    }
+
+    // MARK: - Members
+
+    /// Resolves member UIDs to display names from `users/{uid}`.
+    func fetchMemberDisplayNames(for uids: [String]) async throws -> [String: String] {
+        guard !uids.isEmpty else { return [:] }
+
+        var names: [String: String] = [:]
+
+        for chunk in uids.chunked(into: 10) {
+            let snapshot = try await db.collection("users")
+                .whereField(FieldPath.documentID(), in: chunk)
+                .getDocuments()
+
+            for document in snapshot.documents {
+                let displayName = document.data()["displayName"] as? String ?? "Member"
+                names[document.documentID] = displayName
+            }
+        }
+
+        for uid in uids where names[uid] == nil {
+            names[uid] = "Member"
+        }
+
+        return names
+    }
+
+    // MARK: - Helpers
+
+    private func uniqueInviteCode() async throws -> String {
+        for _ in 0..<5 {
+            let code = Group.generateInviteCode()
+            let existing = try await groups
+                .whereField("inviteCode", isEqualTo: code)
+                .limit(to: 1)
+                .getDocuments()
+
+            if existing.documents.isEmpty {
+                return code
+            }
+        }
+
+        return Group.generateInviteCode(length: 8)
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
