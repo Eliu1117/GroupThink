@@ -24,7 +24,7 @@ struct Screen_time_demoApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
     }
 }

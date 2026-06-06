@@ -40,7 +40,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             .padding()
-            .navigationTitle("Screen Time Demo")
+            .navigationTitle("Home")
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
             .onAppear {
                 authManager.refreshAuthorizationStatus()
