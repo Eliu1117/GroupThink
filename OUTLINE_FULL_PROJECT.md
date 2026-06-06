@@ -2,7 +2,7 @@
 
 ---
 
-## Phase 0 — Blocking Demo **[DONE]**
+## Phase 0 — Blocking Demo **{DONE}**
 
 A self-contained build to validate that Screen Time blocking works on a real device.
 No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
@@ -16,7 +16,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 1 — App Skeleton + Auth *(current priority)*
+## Phase 1 — App Skeleton + Auth **{DONE}**
 
 ### Step 1 — Add Firebase SPM Packages
 - Add `FirebaseAuth` and `FirebaseFirestore` via Swift Package Manager
@@ -53,7 +53,14 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 3 — Sessions Core
+## Phase 3 — Sessions Core *(current priority)*
+
+### Step 0 — Delete a Group (2-Step Verification)
+- **Context:** Catching up on a missing Phase 2 feature before moving into active sessions. Only the group creator (`createdBy == currentUid`) should have deletion privileges.
+- `GroupDetailView`: Add a "Delete Group" destructive action button (visible only to the creator).
+- **Step 1 of Deletion (Confirmation Dialog):** Tapping the button triggers a standard SwiftUI `.confirmationDialog` or `.alert` asking: *"Are you sure you want to permanently delete this group? This action cannot be undone."*
+- **Step 2 of Deletion (Firestore Write):** If confirmed, execute a batch write or delete call to remove the group document from the `groups/` collection. 
+- **Navigation:** Pop the navigation stack back to `GroupsView` once the deletion completes successfully.
 
 ### Step 1 — Host Starts a Session
 - "Start Study Hall" button in `GroupDetailView`

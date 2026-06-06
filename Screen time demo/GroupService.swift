@@ -12,6 +12,7 @@ enum GroupServiceError: LocalizedError {
     case invalidInviteCode
     case alreadyMember
     case notSignedIn
+    case notCreator
 
     var errorDescription: String? {
         switch self {
@@ -21,6 +22,8 @@ enum GroupServiceError: LocalizedError {
             return "You're already a member of this group."
         case .notSignedIn:
             return "You must be signed in to manage groups."
+        case .notCreator:
+            return "Only the group creator can delete this group."
         }
     }
 }
@@ -145,6 +148,33 @@ final class GroupService {
         }
 
         return names
+    }
+
+    // MARK: - Delete
+
+    /// Deletes a group and its sessions subcollection. Only the creator may delete.
+    func deleteGroup(groupID: String, requesterUID: String) async throws {
+        let ref = groups.document(groupID)
+        let snapshot = try await ref.getDocument()
+
+        guard let group = Group(id: snapshot.documentID, document: snapshot) else {
+            throw GroupServiceError.invalidInviteCode
+        }
+
+        guard group.createdBy == requesterUID else {
+            throw GroupServiceError.notCreator
+        }
+
+        let sessionsSnapshot = try await ref.collection("sessions").getDocuments()
+        let batch = db.batch()
+
+        for document in sessionsSnapshot.documents {
+            batch.deleteDocument(document.reference)
+        }
+
+        batch.deleteDocument(ref)
+        try await batch.commit()
+        print("[Groups] Deleted group \(groupID) and \(sessionsSnapshot.documents.count) session(s)")
     }
 
     // MARK: - Helpers

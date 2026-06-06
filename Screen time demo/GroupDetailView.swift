@@ -10,18 +10,101 @@ struct GroupDetailView: View {
     let group: Group
     let currentUserUID: String?
 
+    @Environment(\.dismiss) private var dismiss
+
     @StateObject private var viewModel = GroupDetailViewModel()
+    @StateObject private var sessionViewModel = SessionViewModel()
+
     @State private var didCopyCode = false
+    @State private var showDeleteConfirmation = false
+
+    private var isCreator: Bool {
+        guard let currentUserUID else { return false }
+        return group.createdBy == currentUserUID
+    }
 
     var body: some View {
         List {
+            if sessionViewModel.session != nil {
+                SessionView(
+                    viewModel: sessionViewModel,
+                    memberNames: viewModel.memberNames
+                )
+            }
+
+            if sessionViewModel.session == nil {
+                sessionActionsSection
+            }
+
             inviteCodeSection
             membersSection
+
+            if isCreator {
+                deleteGroupSection
+            }
+
+            if let sessionError = sessionViewModel.errorMessage {
+                Section {
+                    Text(sessionError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            if let groupError = viewModel.errorMessage {
+                Section {
+                    Text(groupError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .navigationTitle(group.name)
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Delete Group?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Group", role: .destructive) {
+                Task { await deleteGroup() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to permanently delete this group? This action cannot be undone.")
+        }
+        .overlay {
+            if viewModel.isDeleting || sessionViewModel.isSubmitting {
+                ProgressView()
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
         .task {
             await viewModel.loadMembers(for: group)
+        }
+        .onAppear {
+            sessionViewModel.configure(groupID: group.id, currentUID: currentUserUID)
+        }
+        .onDisappear {
+            sessionViewModel.stopListening()
+        }
+    }
+
+    // MARK: - Session actions
+
+    private var sessionActionsSection: some View {
+        Section {
+            Button {
+                Task { await sessionViewModel.createSession() }
+            } label: {
+                Label("Start Study Hall", systemImage: "play.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(sessionViewModel.isSubmitting || currentUserUID == nil)
+        } footer: {
+            Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
         }
     }
 
@@ -61,10 +144,6 @@ struct GroupDetailView: View {
                     ProgressView()
                     Spacer()
                 }
-            } else if let errorMessage = viewModel.errorMessage, viewModel.members.isEmpty {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
             } else {
                 ForEach(viewModel.members) { member in
                     HStack(spacing: 12) {
@@ -74,7 +153,7 @@ struct GroupDetailView: View {
                         Text(member.displayName)
 
                         if member.id == group.createdBy {
-                            Text("Host")
+                            Text("Creator")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -91,6 +170,30 @@ struct GroupDetailView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Delete
+
+    private var deleteGroupSection: some View {
+        Section {
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete Group", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .disabled(viewModel.isDeleting)
+        }
+    }
+
+    private func deleteGroup() async {
+        guard let currentUserUID else { return }
+
+        sessionViewModel.stopListening()
+
+        if await viewModel.deleteGroup(groupID: group.id, requesterUID: currentUserUID) {
+            dismiss()
         }
     }
 }

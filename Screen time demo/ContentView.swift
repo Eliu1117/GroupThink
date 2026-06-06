@@ -11,7 +11,7 @@ struct ContentView: View {
 
     @StateObject private var authManager = AuthorizationManager.shared
 
-    @State private var selection = FamilyActivitySelection()
+    @State private var selection = BlocklistStore.shared.selection
     @State private var showPicker = false
     @State private var isBlocking = false
     @State private var timeRemaining = 0
@@ -42,6 +42,9 @@ struct ContentView: View {
             .padding()
             .navigationTitle("Home")
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+            .onChange(of: selection) { _, newValue in
+                BlocklistStore.shared.selection = newValue
+            }
             .onAppear {
                 authManager.refreshAuthorizationStatus()
             }
@@ -143,9 +146,13 @@ struct ContentView: View {
     // MARK: - Blocking
 
     private func startBlock() {
+        BlocklistStore.shared.selection = selection
         BlockingManager.shared.block(selection: selection)
         isBlocking = true
         timeRemaining = Self.blockDurationSeconds
+
+        let endDate = Date().addingTimeInterval(TimeInterval(Self.blockDurationSeconds))
+        try? SessionActivityScheduler.startMonitoring(until: endDate)
 
         blockTask?.cancel()
         blockTask = Task {
@@ -161,6 +168,7 @@ struct ContentView: View {
             }
             await MainActor.run {
                 BlockingManager.shared.clear()
+                SessionActivityScheduler.stopMonitoring()
                 isBlocking = false
                 timeRemaining = 0
                 blockTask = nil
@@ -171,6 +179,7 @@ struct ContentView: View {
     private func stopBlock() {
         blockTask?.cancel()
         blockTask = nil
+        SessionActivityScheduler.stopMonitoring()
         BlockingManager.shared.clear()
         isBlocking = false
         timeRemaining = 0

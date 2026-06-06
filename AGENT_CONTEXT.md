@@ -292,11 +292,11 @@ This requires Apple approval and can take time — submit early.
 
 ## Where things stand right now
 
-The project has successfully completed **Phase 0**. Screen Time blocking (shielding/unshielding) has been validated on a physical iOS device.
+The project has successfully completed **Phase 0** and **Phase 1**. Screen Time shielding functionality has been validated on a physical device, and Firebase Auth (Sign-in with Apple) alongside user profile initialization in Firestore has been fully implemented and verified.
 
-The immediate next task is building out **Phase 1 (App Skeleton + Auth)**:
-1. Add Firebase SPM dependencies (`FirebaseAuth`, `FirebaseFirestore`).
-2. Configure the Xcode target with the "Sign in with Apple" capability.
-3. Build the `AuthViewModel.swift` and integrate the authentication UI flow.
+The immediate next task is building out **Phase 2 (Groups)** and the newly integrated Phase 3 catch-up task:
+1. **Implement Phase 3 — Step 0:** Add the 2-step destructive confirmation flow for deleting a group, ensuring deletion logic restricts access to the group creator (`createdBy == currentUid`).
+2. **Build Phase 2 UI & Service Layer:** Implement the core views (`CreateGroupView`, `JoinGroupView`, `GroupsView`, `GroupDetailView`) and hook them up to `GroupService.swift` to handle Firestore document creation, invite code queries, and membership array updates (`memberUids`).
+3. **Verify Listeners:** Ensure real-time Firestore synchronization correctly populates the groups list where `memberUids` contains the authenticated user's ID.
 
-**Tooling Rule:** Leverage the `xcodebuildmcp` server to verify target builds and catch framework linkage issues early as Firebase packages are integrated.
+**Tooling Rule:** Leverage the `xcodebuildmcp` server to verify target builds and catch framework linkage issues early as group service components are wired together.
