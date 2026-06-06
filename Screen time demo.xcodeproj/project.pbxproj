@@ -79,6 +79,7 @@
 		B1C2D3EF2FCE90010023BF62 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Info.plist,
 				StudyHallMonitor.entitlements,
 			);
 			target = B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */;
@@ -707,10 +708,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8X75449HTD;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = StudyHallMonitor;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.deviceactivity.monitor-extension";
-				INFOPLIST_KEY_NSExtension_NSExtensionPrincipalClass = "$(PRODUCT_MODULE_NAME).StudyHallMonitor";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyHallMonitor/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -736,10 +735,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8X75449HTD;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = StudyHallMonitor;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.deviceactivity.monitor-extension";
-				INFOPLIST_KEY_NSExtension_NSExtensionPrincipalClass = "$(PRODUCT_MODULE_NAME).StudyHallMonitor";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyHallMonitor/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
