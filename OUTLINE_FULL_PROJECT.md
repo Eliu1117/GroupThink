@@ -2,7 +2,7 @@
 
 ---
 
-## Phase 0 — Blocking Demo *(current priority)*
+## Phase 0 — Blocking Demo **[DONE]**
 
 A self-contained build to validate that Screen Time blocking works on a real device.
 No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
@@ -16,7 +16,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 1 — App Skeleton + Auth
+## Phase 1 — App Skeleton + Auth *(current priority)*
 
 ### Step 1 — Add Firebase SPM Packages
 - Add `FirebaseAuth` and `FirebaseFirestore` via Swift Package Manager

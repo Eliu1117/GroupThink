@@ -292,14 +292,11 @@ This requires Apple approval and can take time — submit early.
 
 ## Where things stand right now
 
-The project is at the very start of **Phase 0**. Firebase is wired up. The entitlement
-is present. `ContentView.swift` is a blank placeholder.
+The project has successfully completed **Phase 0**. Screen Time blocking (shielding/unshielding) has been validated on a physical iOS device.
 
-The immediate next task is building the blocking demo:
-1. Create `AuthorizationManager.swift`
-2. Create `BlockingManager.swift`
-3. Replace `ContentView.swift` with a working picker + block + timer UI
-4. Test on a real iPhone (not Simulator)
+The immediate next task is building out **Phase 1 (App Skeleton + Auth)**:
+1. Add Firebase SPM dependencies (`FirebaseAuth`, `FirebaseFirestore`).
+2. Configure the Xcode target with the "Sign in with Apple" capability.
+3. Build the `AuthViewModel.swift` and integrate the authentication UI flow.
 
-Do not add Firebase reads/writes, Sign in with Apple, or groups until the blocking
-demo is confirmed working on a physical device.
+**Tooling Rule:** Leverage the `xcodebuildmcp` server to verify target builds and catch framework linkage issues early as Firebase packages are integrated.
