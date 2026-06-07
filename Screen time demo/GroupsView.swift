@@ -56,6 +56,7 @@ struct GroupsView: View {
             }
             .onAppear {
                 viewModel.startListening(userUID: authViewModel.user?.uid)
+                Task { await authViewModel.syncProfileToFirestore() }
             }
             .onChange(of: authViewModel.user?.uid) { _, userUID in
                 viewModel.startListening(userUID: userUID)

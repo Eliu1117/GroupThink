@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AD7E960E2FCE81F7009F57F6 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E960D2FCE81F7009F57F6 /* FirebaseAnalytics */; };
 		AD7E96102FCE81F7009F57F6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E960F2FCE81F7009F57F6 /* FirebaseAuth */; };
 		AD7E96122FCE81F7009F57F6 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96112FCE81F7009F57F6 /* FirebaseCore */; };
@@ -16,16 +15,10 @@
 		AD7E96182FCE81F7009F57F6 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96172FCE81F7009F57F6 /* FirebaseFunctions */; };
 		AD7E961A2FCE81F7009F57F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96192FCE81F7009F57F6 /* FirebaseMessaging */; };
 		AD7E961C2FCE81F7009F57F6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E961B2FCE81F7009F57F6 /* FirebaseStorage */; };
+		B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		B1C2D3E52FCE90010023BF62 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = AA36A9B92FCE14D10023BF62 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B1C2D3E32FCE90010023BF62;
-			remoteInfo = StudyHallMonitor;
-		};
 		AA36A9CF2FCE14D50023BF62 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = AA36A9B92FCE14D10023BF62 /* Project object */;
@@ -40,24 +33,47 @@
 			remoteGlobalIDString = AA36A9C02FCE14D10023BF62;
 			remoteInfo = "Screen time demo";
 		};
+		B1C2D3E52FCE90010023BF62 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA36A9B92FCE14D10023BF62 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B1C2D3E32FCE90010023BF62;
+			remoteInfo = StudyHallMonitor;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B1C2D3E72FCE90010023BF62 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyHallMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA36A9C12FCE14D10023BF62 /* Screen time demo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Screen time demo.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA36A9CE2FCE14D50023BF62 /* Screen time demoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Screen time demoTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA36A9D82FCE14D50023BF62 /* Screen time demoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Screen time demoUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyHallMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		B1C2D3E22FCE90010023BF62 /* StudyHallMonitor */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				B1C2D3EF2FCE90010023BF62 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B1C2D3EF2FCE90010023BF62 /* Exceptions for "StudyHallMonitor" folder in "StudyHallMonitor" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
 			);
-			path = StudyHallMonitor;
-			sourceTree = "<group>";
+			target = B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */;
 		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA36A9C32FCE14D10023BF62 /* Screen time demo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Screen time demo";
@@ -73,40 +89,17 @@
 			path = "Screen time demoUITests";
 			sourceTree = "<group>";
 		};
+		B1C2D3E22FCE90010023BF62 /* StudyHallMonitor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B1C2D3EF2FCE90010023BF62 /* Exceptions for "StudyHallMonitor" folder in "StudyHallMonitor" target */,
+			);
+			path = StudyHallMonitor;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		B1C2D3EF2FCE90010023BF62 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				StudyHallMonitor.entitlements,
-			);
-			target = B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-		B1C2D3E72FCE90010023BF62 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFrameworksBuildPhase section */
-		B1C2D3E82FCE90010023BF62 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		AA36A9BE2FCE14D10023BF62 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -130,6 +123,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA36A9D52FCE14D50023BF62 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1C2D3E82FCE90010023BF62 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -196,28 +196,6 @@
 			productReference = AA36A9C12FCE14D10023BF62 /* Screen time demo.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B1C2D3ED2FCE90010023BF62 /* Build configuration list for PBXNativeTarget "StudyHallMonitor" */;
-			buildPhases = (
-				B1C2D3EA2FCE90010023BF62 /* Sources */,
-				B1C2D3E82FCE90010023BF62 /* Frameworks */,
-				B1C2D3E92FCE90010023BF62 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				B1C2D3E22FCE90010023BF62 /* StudyHallMonitor */,
-			);
-			name = StudyHallMonitor;
-			packageProductDependencies = (
-			);
-			productName = StudyHallMonitor;
-			productReference = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		AA36A9CD2FCE14D50023BF62 /* Screen time demoTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AA36A9E52FCE14D50023BF62 /* Build configuration list for PBXNativeTarget "Screen time demoTests" */;
@@ -264,6 +242,28 @@
 			productReference = AA36A9D82FCE14D50023BF62 /* Screen time demoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1C2D3ED2FCE90010023BF62 /* Build configuration list for PBXNativeTarget "StudyHallMonitor" */;
+			buildPhases = (
+				B1C2D3EA2FCE90010023BF62 /* Sources */,
+				B1C2D3E82FCE90010023BF62 /* Frameworks */,
+				B1C2D3E92FCE90010023BF62 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B1C2D3E22FCE90010023BF62 /* StudyHallMonitor */,
+			);
+			name = StudyHallMonitor;
+			packageProductDependencies = (
+			);
+			productName = StudyHallMonitor;
+			productReference = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -277,9 +277,6 @@
 					AA36A9C02FCE14D10023BF62 = {
 						CreatedOnToolsVersion = 26.5;
 					};
-					B1C2D3E32FCE90010023BF62 = {
-						CreatedOnToolsVersion = 26.5;
-					};
 					AA36A9CD2FCE14D50023BF62 = {
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = AA36A9C02FCE14D10023BF62;
@@ -287,6 +284,9 @@
 					AA36A9D72FCE14D50023BF62 = {
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = AA36A9C02FCE14D10023BF62;
+					};
+					B1C2D3E32FCE90010023BF62 = {
+						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -323,13 +323,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B1C2D3E92FCE90010023BF62 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		AA36A9CC2FCE14D50023BF62 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -344,17 +337,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		AA36A9BD2FCE14D10023BF62 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+		B1C2D3E92FCE90010023BF62 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B1C2D3EA2FCE90010023BF62 /* Sources */ = {
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA36A9BD2FCE14D10023BF62 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -375,14 +368,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1C2D3EA2FCE90010023BF62 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		B1C2D3E62FCE90010023BF62 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */;
-			targetProxy = B1C2D3E52FCE90010023BF62 /* PBXContainerItemProxy */;
-		};
 		AA36A9D02FCE14D50023BF62 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = AA36A9C02FCE14D10023BF62 /* Screen time demo */;
@@ -392,6 +387,11 @@
 			isa = PBXTargetDependency;
 			target = AA36A9C02FCE14D10023BF62 /* Screen time demo */;
 			targetProxy = AA36A9D92FCE14D50023BF62 /* PBXContainerItemProxy */;
+		};
+		B1C2D3E62FCE90010023BF62 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */;
+			targetProxy = B1C2D3E52FCE90010023BF62 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

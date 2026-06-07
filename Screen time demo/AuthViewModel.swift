@@ -7,7 +7,6 @@ import AuthenticationServices
 import Combine
 import CryptoKit
 import FirebaseAuth
-import FirebaseFirestore
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -68,11 +67,25 @@ final class AuthViewModel: ObservableObject {
                 self.isAuthenticated = user != nil
                 if let user {
                     print("[Auth] Auth state changed — signed in as \(user.uid)")
+                    await self.syncProfileToFirestore()
                 } else {
                     print("[Auth] Auth state changed — signed out")
                 }
             }
         }
+    }
+
+    /// Best available display name from Firebase Auth (same source as the Profile tab).
+    var resolvedProfileDisplayName: String {
+        guard let user else { return "User" }
+        return resolvedDisplayName(firebaseUser: user, appleFullName: nil)
+    }
+
+    /// Pushes the current auth display name into Firestore when the stored value is a placeholder.
+    func syncProfileToFirestore() async {
+        guard let user else { return }
+        let displayName = resolvedDisplayName(firebaseUser: user, appleFullName: nil)
+        await UserService.shared.syncDisplayName(uid: user.uid, displayName: displayName)
     }
 
     // MARK: - Apple → Firebase flow
@@ -126,7 +139,7 @@ final class AuthViewModel: ObservableObject {
             print("[Auth] Signing in to Firebase with Apple credential")
             let authResult = try await Auth.auth().signIn(with: credential)
             print("[Auth] Firebase sign-in succeeded — uid: \(authResult.user.uid)")
-            try await createUserDocumentIfNeeded(
+            try await upsertUserDocument(
                 for: authResult.user,
                 fullName: appleCredential.fullName
             )
@@ -138,27 +151,9 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Firestore
 
-    private func createUserDocumentIfNeeded(for user: User, fullName: PersonNameComponents?) async throws {
-        let docRef = Firestore.firestore().collection("users").document(user.uid)
-        let snapshot = try await docRef.getDocument()
-
-        if snapshot.exists {
-            print("[Auth] Firestore user doc already exists for \(user.uid) — skipping create")
-            return
-        }
-
+    private func upsertUserDocument(for user: User, fullName: PersonNameComponents?) async throws {
         let displayName = resolvedDisplayName(firebaseUser: user, appleFullName: fullName)
-        let userData: [String: Any] = [
-            "displayName": displayName,
-            "photoURL": user.photoURL?.absoluteString ?? NSNull(),
-            "stats": [
-                "focusMinutes": 0,
-                "currentStreak": 0,
-            ],
-        ]
-
-        try await docRef.setData(userData)
-        print("[Auth] Firestore user doc created for \(user.uid) — displayName: \(displayName)")
+        await UserService.shared.syncDisplayName(uid: user.uid, displayName: displayName)
     }
 
     private func resolvedDisplayName(firebaseUser: User, appleFullName: PersonNameComponents?) -> String {

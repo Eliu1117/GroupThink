@@ -10,6 +10,7 @@ struct GroupDetailView: View {
     let group: Group
     let currentUserUID: String?
 
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var viewModel = GroupDetailViewModel()
@@ -80,8 +81,13 @@ struct GroupDetailView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .task {
-            await viewModel.loadMembers(for: group)
+        .task(id: group.memberUids) {
+            await authViewModel.syncProfileToFirestore()
+            var knownNames: [String: String] = [:]
+            if let currentUserUID {
+                knownNames[currentUserUID] = authViewModel.resolvedProfileDisplayName
+            }
+            await viewModel.loadMembers(for: group, knownNames: knownNames)
         }
         .onAppear {
             sessionViewModel.configure(groupID: group.id, currentUID: currentUserUID)
@@ -210,5 +216,6 @@ struct GroupDetailView: View {
             ),
             currentUserUID: "user1"
         )
+        .environmentObject(AuthViewModel())
     }
 }

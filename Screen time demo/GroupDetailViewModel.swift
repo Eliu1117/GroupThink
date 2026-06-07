@@ -21,24 +21,26 @@ final class GroupDetailViewModel: ObservableObject {
     @Published private(set) var isDeleting = false
     @Published private(set) var errorMessage: String?
 
-    func loadMembers(for group: Group) async {
+    func loadMembers(for group: Group, knownNames: [String: String] = [:]) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
-        do {
-            let names = try await GroupService.shared.fetchMemberDisplayNames(for: group.memberUids)
-            memberNames = names
-            members = group.memberUids.map { uid in
-                GroupMember(id: uid, displayName: names[uid] ?? "Member")
-            }
-            print("[Groups] Resolved \(members.count) member name(s) for group \(group.id)")
-        } catch {
-            errorMessage = error.localizedDescription
-            memberNames = Dictionary(uniqueKeysWithValues: group.memberUids.map { ($0, "Member") })
-            members = group.memberUids.map { GroupMember(id: $0, displayName: "Member") }
-            print("[Groups] Member fetch failed: \(error.localizedDescription)")
+        var names = await UserService.shared.fetchDisplayNames(for: group.memberUids)
+
+        for (uid, name) in knownNames {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed != "User", trimmed != "Member" else { continue }
+            names[uid] = trimmed
         }
+
+        memberNames = names
+        members = group.memberUids.map { uid in
+            GroupMember(id: uid, displayName: names[uid] ?? "Member")
+        }
+
+        let resolvedCount = members.filter { $0.displayName != "Member" }.count
+        print("[Groups] Resolved \(resolvedCount)/\(members.count) member name(s) for group \(group.id)")
     }
 
     func deleteGroup(groupID: String, requesterUID: String) async -> Bool {

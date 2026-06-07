@@ -128,26 +128,7 @@ final class GroupService {
 
     /// Resolves member UIDs to display names from `users/{uid}`.
     func fetchMemberDisplayNames(for uids: [String]) async throws -> [String: String] {
-        guard !uids.isEmpty else { return [:] }
-
-        var names: [String: String] = [:]
-
-        for chunk in uids.chunked(into: 10) {
-            let snapshot = try await db.collection("users")
-                .whereField(FieldPath.documentID(), in: chunk)
-                .getDocuments()
-
-            for document in snapshot.documents {
-                let displayName = document.data()["displayName"] as? String ?? "Member"
-                names[document.documentID] = displayName
-            }
-        }
-
-        for uid in uids where names[uid] == nil {
-            names[uid] = "Member"
-        }
-
-        return names
+        await UserService.shared.fetchDisplayNames(for: uids)
     }
 
     // MARK: - Delete
@@ -193,14 +174,5 @@ final class GroupService {
         }
 
         return Group.generateInviteCode(length: 8)
-    }
-}
-
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
     }
 }

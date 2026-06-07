@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // users/{uid} — group member names are read from here
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSelf(uid);
+      allow delete: if false;
+    }
+
+    match /groups/{groupId} {
+      function isMember() {
+        return isSignedIn() && request.auth.uid in resource.data.memberUids;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.auth.uid in request.resource.data.memberUids;
+      allow update: if isMember()
+        || (isSignedIn()
+            && request.resource.data.memberUids.hasAll(resource.data.memberUids)
+            && request.resource.data.memberUids.removeAll(resource.data.memberUids) == [request.auth.uid]);
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+
+      match /sessions/{sessionId} {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        function isGroupMember() {
+          return isSignedIn() && request.auth.uid in parentGroup().memberUids;
+        }
+        allow read, create, update: if isGroupMember();
+        allow delete: if isGroupMember();
+      }
+    }
+  }
+}

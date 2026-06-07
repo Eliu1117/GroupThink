@@ -46,7 +46,10 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .onAppear {
-                profileViewModel.startListening(userID: authViewModel.user?.uid)
+                Task {
+                    await authViewModel.syncProfileToFirestore()
+                    profileViewModel.startListening(userID: authViewModel.user?.uid)
+                }
             }
             .onChange(of: authViewModel.user?.uid) { _, userID in
                 profileViewModel.startListening(userID: userID)
