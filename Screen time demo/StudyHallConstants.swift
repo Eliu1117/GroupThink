@@ -25,4 +25,7 @@ enum StudyHallConstants {
     /// Firebase Auth ID token cached by the main app for extension REST writes.
     static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
     static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
+
+    /// Background URLSession identifier shared with StudyHallMonitor (must stay in sync).
+    static let backgroundURLSessionIdentifier = "com.davechengapps.screentimedemo.backgroundsession"
 }

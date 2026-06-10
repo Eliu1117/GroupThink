@@ -41,6 +41,19 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) {
         print("[FCM] APNs registration failed: \(error.localizedDescription)")
     }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == BackgroundURLSessionRelauncher.identifier else {
+            completionHandler()
+            return
+        }
+
+        BackgroundURLSessionRelauncher.handleEvents(completionHandler: completionHandler)
+    }
 }
 
 @main

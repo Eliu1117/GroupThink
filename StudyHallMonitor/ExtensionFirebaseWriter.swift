@@ -2,12 +2,8 @@
 //  ExtensionFirebaseWriter.swift
 //  StudyHallMonitor
 //
-//  Plan A: synchronous Firestore REST PATCH — no Firestore SDK handshake in the extension.
-//
-//  Plan B fallback (not compiled): if security rules block REST or tokens cannot be cached,
-//  re-link FirebaseFirestore in the extension target and call `ExtensionFirestoreSDKFallback`
-//  after warming the client with `Firestore.firestore().disableNetwork()` / `enableNetwork()`
-//  plus `waitForPendingWrites()` before `updateData`, blocking with a DispatchSemaphore.
+//  Firestore REST PATCH via URLSessionConfiguration.background — handed off to nsurlsessiond
+//  so network continues after the DeviceActivityMonitor extension is suspended.
 //
 
 import Foundation
@@ -15,15 +11,24 @@ import Foundation
 enum ExtensionFirebaseWriter {
     private enum Keys {
         static let appGroupID = "group.com.davechengapps.screentimedemo"
+        static let backgroundSessionIdentifier = "com.davechengapps.screentimedemo.backgroundsession"
         static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
         static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
         static let projectIDPlistKey = "PROJECT_ID"
     }
 
-    private static let requestTimeout: TimeInterval = 5.0
     private static let tokenExpiryBuffer: TimeInterval = 60
+    private static let sessionDelegate = BackgroundURLSessionDelegate.shared
 
-    /// Marks the current user as `opened` via Firestore REST. Blocks until HTTP completes or times out.
+    private static let backgroundSession: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: Keys.backgroundSessionIdentifier)
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        config.sharedContainerIdentifier = Keys.appGroupID
+        return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+    }()
+
+    /// Enqueues a background Firestore REST PATCH. Returns immediately; nsurlsessiond performs the upload.
     static func markOpenedFromBackground(context: ExtensionSessionContext? = ExtensionSessionContext.load()) {
         guard let context else {
             print("[Extension REST] Missing session context — cannot write opened state")
@@ -43,23 +48,17 @@ enum ExtensionFirebaseWriter {
             return
         }
 
-        let success = patchOpenedState(
-            projectID: projectID,
-            context: context,
-            idToken: idToken
-        )
-
-        if success {
-            print("[Extension REST] SUCCESS: Background status set to opened for \(context.userUID)")
-        } else {
-            print("[Extension REST] Background update failed — queueing fallback")
+        guard enqueueBackgroundPatch(projectID: projectID, context: context, idToken: idToken) else {
+            print("[Extension REST] Failed to enqueue background upload — queueing fallback")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            return
         }
     }
 
-    // MARK: - Firestore REST
+    // MARK: - Background Firestore REST
 
-    private static func patchOpenedState(
+    @discardableResult
+    private static func enqueueBackgroundPatch(
         projectID: String,
         context: ExtensionSessionContext,
         idToken: String
@@ -76,47 +75,18 @@ enum ExtensionFirebaseWriter {
             return false
         }
 
-        var request = URLRequest(url: url, timeoutInterval: requestTimeout)
+        var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
 
-        let semaphore = DispatchSemaphore(value: 0)
-        var succeeded = false
-
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            defer { semaphore.signal() }
-
-            if let error {
-                print("[Extension REST] ERROR: \(error.localizedDescription)")
-                return
-            }
-
-            guard let http = response as? HTTPURLResponse else {
-                print("[Extension REST] ERROR: Missing HTTP response")
-                return
-            }
-
-            if http.statusCode == 200 {
-                succeeded = true
-                return
-            }
-
-            let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            print("[Extension REST] ERROR: HTTP \(http.statusCode) — \(responseBody)")
-        }
-
+        let task = backgroundSession.uploadTask(with: request, from: body)
         task.resume()
 
-        let waitResult = semaphore.wait(timeout: .now() + requestTimeout)
-        if waitResult == .timedOut {
-            print("[Extension REST] ERROR: Request timed out after \(requestTimeout)s")
-            task.cancel()
-            return false
-        }
-
-        return succeeded
+        print(
+            "[Extension REST] Enqueued background upload for \(context.userUID) on session \(context.sessionID)"
+        )
+        return true
     }
 
     private static func buildPatchBody(userUID: String) -> Data? {

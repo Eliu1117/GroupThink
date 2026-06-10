@@ -51,9 +51,9 @@ class StudyHallMonitor: DeviceActivityMonitor {
             "[DeviceActivity Monitor] openedBlockedApp threshold — session \(context.sessionID), user \(context.userUID)"
         )
 
-        // Synchronous Firestore REST PATCH; semaphore inside keeps the extension thread alive.
+        // Hand off Firestore REST PATCH to nsurlsessiond via a background URLSession upload task.
         ExtensionFirebaseWriter.markOpenedFromBackground(context: context)
-        print("[DeviceActivity Monitor] openedBlockedApp threshold handled")
+        print("[DeviceActivity Monitor] openedBlockedApp upload enqueued to background URL session")
     }
 
     private func applyShields() {
