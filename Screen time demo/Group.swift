@@ -15,10 +15,20 @@ struct Group: Identifiable, Equatable, Hashable {
     let inviteCode: String
     let createdBy: String
     let memberUids: [String]
-    /// Consecutive days on which every member completed a session (Phase 5).
+
+    // MARK: - Phase 5 streak fields
+    /// Consecutive days on which every member completed a session.
     let currentGroupStreak: Int
     /// Calendar day the group streak was last counted.
     let lastGroupStreakUpdate: Date?
+
+    // MARK: - GRO-9/14/20 settings
+    /// When true, the host's personal blocklist is enforced on all participants at session start.
+    let enforceHostBlocks: Bool
+    /// When true, users may join a session that is already in the active state.
+    let allowLateJoin: Bool
+    /// When true, only the group creator can start a new session.
+    let creatorOnlyStart: Bool
 
     init?(
         id: String,
@@ -42,6 +52,9 @@ struct Group: Identifiable, Equatable, Hashable {
         self.memberUids = memberUids
         self.currentGroupStreak = data["currentGroupStreak"] as? Int ?? 0
         self.lastGroupStreakUpdate = (data["lastGroupStreakUpdate"] as? Timestamp)?.dateValue()
+        self.enforceHostBlocks = data["enforceHostBlocks"] as? Bool ?? true
+        self.allowLateJoin = data["allowLateJoin"] as? Bool ?? true
+        self.creatorOnlyStart = data["creatorOnlyStart"] as? Bool ?? true
     }
 
     init(
@@ -51,7 +64,10 @@ struct Group: Identifiable, Equatable, Hashable {
         createdBy: String,
         memberUids: [String],
         currentGroupStreak: Int = 0,
-        lastGroupStreakUpdate: Date? = nil
+        lastGroupStreakUpdate: Date? = nil,
+        enforceHostBlocks: Bool = true,
+        allowLateJoin: Bool = true,
+        creatorOnlyStart: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -60,6 +76,9 @@ struct Group: Identifiable, Equatable, Hashable {
         self.memberUids = memberUids
         self.currentGroupStreak = currentGroupStreak
         self.lastGroupStreakUpdate = lastGroupStreakUpdate
+        self.enforceHostBlocks = enforceHostBlocks
+        self.allowLateJoin = allowLateJoin
+        self.creatorOnlyStart = creatorOnlyStart
     }
 
     /// Generates a short, human-friendly invite code (ambiguous characters omitted).

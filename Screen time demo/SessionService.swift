@@ -83,7 +83,9 @@ final class SessionService {
     func createSession(
         groupID: String,
         hostUID: String,
-        durationMin: Int = 25
+        durationMin: Int = 25,
+        hostBlocklistData: String? = nil,
+        enforceHostBlocks: Bool = true
     ) async throws -> String {
         let ref = activeSessionRef(for: groupID)
 
@@ -97,16 +99,20 @@ final class SessionService {
         }
 
         let sessionID = UUID().uuidString
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "sessionId": sessionID,
             "status": SessionStatus.lobby.rawValue,
             "hostUid": hostUID,
             "durationMin": durationMin,
             "blocklistConfig": [:] as [String: Any],
+            "enforceHostBlocks": enforceHostBlocks,
             "participants": [
                 hostUID: ["state": ParticipantState.focused.rawValue],
             ],
         ]
+        if let hostBlocklistData {
+            data["hostBlocklistData"] = hostBlocklistData
+        }
 
         try await ref.setData(data)
         print("[Firestore Session] Started session \(sessionID) in group \(groupID)")

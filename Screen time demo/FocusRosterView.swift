@@ -1,20 +1,22 @@
 //
-//  PresenceLeaderboardView.swift
+//  FocusRosterView.swift
 //  Screen time demo
 //
-//  Live "shame wall" roster for session participant presence states.
+//  GRO-18: Renamed from PresenceLeaderboardView — this component tracks live
+//  presence status (focused / left / opened), not point values.
 //
 
 import SwiftUI
 
-struct PresenceLeaderboardView: View {
+/// Live participant roster displayed in the lobby and active session screens.
+struct FocusRosterView: View {
     let participants: [SessionParticipant]
     let memberNames: [String: String]
     let hostUid: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Live Leaderboard", systemImage: "list.bullet.rectangle.portrait")
+            Label("Focus Roster", systemImage: "list.bullet.rectangle.portrait")
                 .font(.headline)
 
             if sortedParticipants.isEmpty {
@@ -23,8 +25,8 @@ struct PresenceLeaderboardView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(sortedParticipants) { participant in
-                    PresenceLeaderboardRow(
-                        name: memberNames[participant.id] ?? "Member",
+                    FocusRosterRow(
+                        name: memberNames[participant.id] ?? participant.id,
                         state: participant.state,
                         isHost: participant.id == hostUid
                     )
@@ -44,7 +46,7 @@ struct PresenceLeaderboardView: View {
         }
     }
 
-    /// Lower rank surfaces higher on the shame wall (opened first).
+    /// Lower rank surfaces higher on the roster (opened-app offenders first).
     private func presenceRank(_ state: ParticipantState) -> Int {
         switch state {
         case .opened: return 0
@@ -55,7 +57,7 @@ struct PresenceLeaderboardView: View {
     }
 }
 
-private struct PresenceLeaderboardRow: View {
+private struct FocusRosterRow: View {
     let name: String
     let state: ParticipantState
     let isHost: Bool
@@ -107,7 +109,7 @@ private struct PresenceLeaderboardRow: View {
 }
 
 #Preview {
-    PresenceLeaderboardView(
+    FocusRosterView(
         participants: [
             SessionParticipant(id: "u1", state: .focused),
             SessionParticipant(id: "u2", state: .opened),

@@ -36,7 +36,8 @@ struct SessionView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                PresenceLeaderboardView(
+                // GRO-18: Renamed FocusRosterView
+                FocusRosterView(
                     participants: viewModel.participants,
                     memberNames: memberNames,
                     hostUid: session.hostUid
@@ -79,27 +80,47 @@ struct SessionView: View {
     private func activeContent(_ session: StudySession) -> some View {
         Section {
             VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Text("Session Active")
-                        .font(.headline)
-                        .foregroundStyle(.orange)
+                if viewModel.isInLobby {
+                    // Countdown for participants who are already in the session.
+                    VStack(spacing: 8) {
+                        Text("Session Active")
+                            .font(.headline)
+                            .foregroundStyle(.orange)
 
-                    Text(viewModel.formattedCountdown)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
+                        // GRO-19: secondsRemaining is driven by the long-lived countdown
+                        // task in SessionViewModel, so it survives navigation pushes.
+                        Text(viewModel.formattedCountdown)
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                } else {
+                    // Banner for observers / late-joiners who haven't joined yet.
+                    VStack(spacing: 8) {
+                        Text("Session In Progress")
+                            .font(.headline)
+                            .foregroundStyle(.orange)
+
+                        Text("\(session.durationMin)-minute session · in progress")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
 
-                PresenceLeaderboardView(
+                // GRO-18: Renamed FocusRosterView
+                FocusRosterView(
                     participants: viewModel.participants,
                     memberNames: memberNames,
                     hostUid: session.hostUid
                 )
 
-                if viewModel.isHost {
+                if viewModel.isInLobby, viewModel.isHost {
                     Button(role: .destructive) {
                         Task { await viewModel.endSession() }
                     } label: {
@@ -107,6 +128,20 @@ struct SessionView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(viewModel.isSubmitting)
+                }
+
+                // GRO-14: Late-join button shown when the session is active,
+                // the user is not yet a participant, and the group allows late joining.
+                if viewModel.canLateJoin {
+                    Button {
+                        Task { await viewModel.joinLobby() }
+                    } label: {
+                        Label("Join Active Session", systemImage: "person.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
                     .disabled(viewModel.isSubmitting)
                 }
             }

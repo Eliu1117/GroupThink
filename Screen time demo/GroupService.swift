@@ -51,6 +51,10 @@ final class GroupService {
             "inviteCode": inviteCode,
             "createdBy": creatorUID,
             "memberUids": [creatorUID],
+            // GRO-9/14/20 default settings
+            "enforceHostBlocks": true,
+            "allowLateJoin": true,
+            "creatorOnlyStart": true,
         ]
 
         try await ref.setData(data)

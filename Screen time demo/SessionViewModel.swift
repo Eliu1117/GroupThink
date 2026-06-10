@@ -18,6 +18,10 @@ final class SessionViewModel: ObservableObject {
     @Published private(set) var secondsRemaining: Int = 0
     @Published private(set) var isSubmitting = false
     @Published private(set) var errorMessage: String?
+    /// GRO-21: Display names hydrated for every participant UID seen in this session.
+    @Published private(set) var participantNames: [String: String] = [:]
+    /// GRO-20: Exposed so GroupDetailView can conditionally show the start button.
+    @Published private(set) var creatorOnlyStart: Bool = true
 
     private var groupID: String?
     private var currentUID: String?
@@ -28,10 +32,16 @@ final class SessionViewModel: ObservableObject {
     private var scheduledEndDate: Date?
     private var isTearingDown = false
 
+    // MARK: - GRO-9/14/20 group settings
+    private var enforceHostBlocks: Bool = true
+    private var allowLateJoin: Bool = true
+
     deinit {
         sessionListener?.remove()
         countdownTask?.cancel()
     }
+
+    // MARK: - Configuration
 
     func configure(groupID: String, currentUID: String?) {
         guard self.groupID != groupID || self.currentUID != currentUID else { return }
@@ -41,6 +51,7 @@ final class SessionViewModel: ObservableObject {
         self.currentUID = currentUID
         session = nil
         participants = []
+        participantNames = [:]
         errorMessage = nil
         secondsRemaining = 0
         didApplyBlocking = false
@@ -66,6 +77,23 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
+    /// GRO-9/14/20: Applies group settings from the live Group model.
+    func updateGroupSettings(group: Group) {
+        enforceHostBlocks = group.enforceHostBlocks
+        allowLateJoin = group.allowLateJoin
+        creatorOnlyStart = group.creatorOnlyStart
+    }
+
+    /// GRO-21: Seeds display names from the pre-fetched member roster.
+    /// Only fills gaps; does not overwrite names already resolved from Firestore.
+    func seedParticipantNames(_ names: [String: String]) {
+        for (uid, name) in names {
+            if participantNames[uid] == nil {
+                participantNames[uid] = name
+            }
+        }
+    }
+
     func stopListening() {
         detachSessionListener()
         haltLocalSessionInfrastructure(reason: "listener stop")
@@ -83,11 +111,16 @@ final class SessionViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
 
+        // GRO-9: Encode the host's personal blocklist for session storage.
+        let hostBlocklistData: String? = enforceHostBlocks ? BlocklistStore.shared.encodedAsBase64() : nil
+
         do {
             _ = try await SessionService.shared.createSession(
                 groupID: groupID,
                 hostUID: currentUID,
-                durationMin: durationMin
+                durationMin: durationMin,
+                hostBlocklistData: hostBlocklistData,
+                enforceHostBlocks: enforceHostBlocks
             )
             return true
         } catch {
@@ -99,6 +132,7 @@ final class SessionViewModel: ObservableObject {
 
     func joinLobby() async -> Bool {
         guard let groupID, let currentUID, let session else { return false }
+        guard session.status == .lobby || (session.status == .active && allowLateJoin) else { return false }
 
         isSubmitting = true
         errorMessage = nil
@@ -112,7 +146,7 @@ final class SessionViewModel: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
-            print("[Firestore Session] Error joining lobby: \(error.localizedDescription)")
+            print("[Firestore Session] Error joining session: \(error.localizedDescription)")
             return false
         }
     }
@@ -235,11 +269,13 @@ final class SessionViewModel: ObservableObject {
                 requesterUID: currentUID
             )
             awardStats(for: activeSession)
-            detachSessionListener()
+            // GRO-17: Listener is kept alive here so it can pick up the NEXT session
+            // immediately after the host creates one. The listener will emit nil once
+            // Firestore reflects the "ended" status and finalizeSessionTeardown cleans up.
             self.session = nil
             participants = []
             previousStatus = nil
-            print("[Firestore Session] Session \(sessionID) ended — local state cleared")
+            print("[Session] Session \(sessionID) ended — listener retained for next session")
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -259,6 +295,12 @@ final class SessionViewModel: ObservableObject {
     var isInLobby: Bool {
         guard let session, let currentUID else { return false }
         return session.participants[currentUID] != nil
+    }
+
+    /// GRO-14: True when an active session exists and the user hasn't joined yet.
+    var canLateJoin: Bool {
+        guard let session, session.status == .active else { return false }
+        return !isInLobby && allowLateJoin
     }
 
     var myState: ParticipantState? {
@@ -282,6 +324,7 @@ final class SessionViewModel: ObservableObject {
             previousStatus = session.status
             self.session = session
             participants = session.participantList
+            hydrateParticipantNames(for: session) // GRO-21
 
             switch session.status {
             case .lobby:
@@ -304,8 +347,6 @@ final class SessionViewModel: ObservableObject {
                 finalizeSessionTeardown(clearSessionDocument: true)
             }
         } else {
-            // The live-session query drops the doc once it ends, so the listener
-            // reports nil. Award from the last known active snapshot.
             if previousStatus == .active, let lastSession = self.session {
                 awardStats(for: lastSession)
             }
@@ -313,53 +354,49 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
-    /// Phase 5 — awards focus minutes and records violations for the LOCAL user.
-    /// Focused users earn full elapsed minutes; opened-app users earn 0 minutes
-    /// but a violation count. Idempotent per session (guarded inside StatsService).
-    private func awardStats(for session: StudySession) {
-        guard let groupID, let currentUID else { return }
+    /// GRO-9: Applies shields using the user's personal blocklist merged with the
+    /// host's enforced selection (when present and decodable on this device).
+    private func applyLocalBlocking(for session: StudySession) {
+        let personal = BlocklistStore.shared.selection
 
-        let state = session.participants[currentUID]
-        let violated = state == .opened
+        let hostSelection: FamilyActivitySelection? = {
+            guard session.enforceHostBlocks,
+                  let base64 = session.hostBlocklistData,
+                  let decoded = BlocklistStore.decodeFromBase64(base64) else { return nil }
+            return decoded
+        }()
 
-        let focusMinutes: Int
-        if state == .focused, let startAt = session.startAt {
-            let elapsed = Int((Date().timeIntervalSince(startAt) / 60).rounded())
-            focusMinutes = min(session.durationMin, max(elapsed, 0))
-        } else {
-            focusMinutes = 0
-        }
-
-        guard focusMinutes > 0 || violated else {
-            print("[Stats] No award — local user left or was not a participant")
+        guard !personal.applicationTokens.isEmpty
+                || !personal.categoryTokens.isEmpty
+                || hostSelection != nil
+        else {
+            print("[Session] No blocklist configured — skipping shield")
             return
         }
 
-        let sessionID = session.id
-        Task {
-            await StatsService.shared.recordSessionCompletion(
-                groupID: groupID,
-                sessionID: sessionID,
-                userUID: currentUID,
-                focusMinutes: focusMinutes,
-                violated: violated
-            )
+        BlockingManager.shared.blockMerged(personal: personal, host: hostSelection)
+        didApplyBlocking = true
+        print("[Session] Applied merged shields (enforceHostBlocks: \(session.enforceHostBlocks))")
+
+        if let endDate = session.endDate {
+            scheduleBackgroundMonitoring(until: endDate, selection: personal)
         }
     }
 
-    private func applyLocalBlocking(for session: StudySession) {
-        let selection = BlocklistStore.shared.selection
-        guard BlocklistStore.shared.hasSelection else {
-            print("[Firestore Session] No local blocklist configured — skipping shield")
-            return
-        }
+    /// GRO-21: Detects participant UIDs not yet in `participantNames` and fetches
+    /// their display names from Firestore in the background.
+    private func hydrateParticipantNames(for session: StudySession) {
+        let knownUIDs = Set(participantNames.keys)
+        let newUIDs = Set(session.participants.keys).subtracting(knownUIDs)
+        guard !newUIDs.isEmpty else { return }
 
-        BlockingManager.shared.block(selection: selection)
-        didApplyBlocking = true
-        print("[Firestore Session] Applied local app shields")
-
-        if let endDate = session.endDate {
-            scheduleBackgroundMonitoring(until: endDate, selection: selection)
+        Task {
+            let fetched = await UserService.shared.fetchDisplayNames(for: Array(newUIDs))
+            await MainActor.run {
+                for (uid, name) in fetched where self.participantNames[uid] == nil {
+                    self.participantNames[uid] = name
+                }
+            }
         }
     }
 
@@ -434,8 +471,8 @@ final class SessionViewModel: ObservableObject {
                             if self.isHost {
                                 _ = await self.endSession()
                             } else {
-                                if let session = self.session {
-                                    self.awardStats(for: session)
+                                if let s = self.session {
+                                    self.awardStats(for: s)
                                 }
                                 self.haltLocalSessionInfrastructure(reason: "timer expired (participant)")
                             }
@@ -466,7 +503,7 @@ final class SessionViewModel: ObservableObject {
         if didApplyBlocking {
             BlockingManager.shared.clear()
             didApplyBlocking = false
-            print("[Firestore Session] Cleared local blocking — \(reason)")
+            print("[Session] Cleared local blocking — \(reason)")
         }
     }
 
@@ -490,7 +527,7 @@ final class SessionViewModel: ObservableObject {
     private func reattachListenerIfNeeded() {
         guard let groupID, sessionListener == nil else { return }
 
-        print("[Firestore Session] Re-attaching listener after failed end")
+        print("[Session] Re-attaching listener after failed end")
         sessionListener = SessionService.shared.observeLiveSession(groupID: groupID) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
@@ -514,6 +551,33 @@ final class SessionViewModel: ObservableObject {
                 applyLocalBlocking(for: session)
             }
             startCountdown(for: session)
+        }
+    }
+
+    // MARK: - Phase 5 stats
+
+    /// Phase 5 — awards focus minutes and streaks for the LOCAL user if they stayed focused.
+    /// Idempotent per session (guarded inside StatsService).
+    func awardStats(for session: StudySession) {
+        guard let groupID, let currentUID else { return }
+        guard session.participants[currentUID] == .focused else {
+            print("[Stats] No award — local user did not stay focused")
+            return
+        }
+        guard let startAt = session.startAt else { return }
+
+        let elapsedMinutes = Int((Date().timeIntervalSince(startAt) / 60).rounded())
+        let minutes = min(session.durationMin, max(elapsedMinutes, 0))
+        guard minutes > 0 else { return }
+
+        let sessionID = session.id
+        Task {
+            await StatsService.shared.recordSessionCompletion(
+                groupID: groupID,
+                sessionID: sessionID,
+                userUID: currentUID,
+                focusMinutes: minutes
+            )
         }
     }
 }

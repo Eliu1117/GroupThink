@@ -25,12 +25,20 @@ struct GroupDetailView: View {
         return group.createdBy == currentUserUID
     }
 
+    /// GRO-20: True when the current user is allowed to start a new session.
+    private var canStartSession: Bool {
+        guard currentUserUID != nil else { return false }
+        return !group.creatorOnlyStart || isCreator
+    }
+
     var body: some View {
         List {
             if sessionViewModel.session != nil {
                 SessionView(
                     viewModel: sessionViewModel,
-                    memberNames: viewModel.memberNames
+                    // GRO-21: Use participant names hydrated by SessionViewModel so
+                    // names for late-joining members are always up to date.
+                    memberNames: sessionViewModel.participantNames
                 )
             }
 
@@ -85,18 +93,28 @@ struct GroupDetailView: View {
         }
         .task(id: group.memberUids) {
             await authViewModel.syncProfileToFirestore()
+
+            // GRO-9/14/20: Sync group settings into the session VM.
+            sessionViewModel.updateGroupSettings(group: group)
+
             var knownNames: [String: String] = [:]
             if let currentUserUID {
                 knownNames[currentUserUID] = authViewModel.resolvedProfileDisplayName
             }
             await viewModel.loadMembers(for: group, knownNames: knownNames)
+
+            // GRO-21: Seed resolved names into SessionViewModel so the roster
+            // immediately shows real names without an extra Firestore round-trip.
+            sessionViewModel.seedParticipantNames(viewModel.memberNames)
         }
         .onAppear {
             sessionViewModel.configure(groupID: group.id, currentUID: currentUserUID)
         }
-        .onDisappear {
-            sessionViewModel.stopListening()
-        }
+        // GRO-19: onDisappear no longer calls stopListening().
+        // The countdown and session listener are long-lived in the @StateObject ViewModel
+        // and persist while GroupDetailView is in the navigation stack (e.g. when the
+        // Leaderboard subview is pushed). Cleanup happens in SessionViewModel.deinit
+        // when the view is truly popped from the stack.
         .onChange(of: scenePhase) { _, newPhase in
             sessionViewModel.handleScenePhase(newPhase)
         }
@@ -113,9 +131,14 @@ struct GroupDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(sessionViewModel.isSubmitting || currentUserUID == nil)
+            // GRO-20: Disabled when creatorOnlyStart is true and user is not the creator.
+            .disabled(!canStartSession || sessionViewModel.isSubmitting)
         } footer: {
-            Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
+            if !canStartSession {
+                Text("Only the group creator can start a session.")
+            } else {
+                Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
+            }
         }
     }
 
