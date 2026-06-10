@@ -3,6 +3,7 @@
 //  Screen time demo
 //
 
+import FirebaseMessaging
 import SwiftUI
 
 struct RootView: View {
@@ -18,6 +19,13 @@ struct RootView: View {
         }
         .environmentObject(authViewModel)
         .animation(.easeInOut, value: authViewModel.isAuthenticated)
+        .task(id: authViewModel.isAuthenticated) {
+            guard authViewModel.isAuthenticated else { return }
+            await PushNotificationService.shared.registerForPushNotifications()
+            if let token = try? await Messaging.messaging().token() {
+                await PushNotificationService.shared.handleTokenRefresh(token)
+            }
+        }
     }
 }
 

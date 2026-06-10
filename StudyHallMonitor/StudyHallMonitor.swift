@@ -2,7 +2,7 @@
 //  StudyHallMonitor.swift
 //  StudyHallMonitor
 //
-//  DeviceActivityMonitor extension — applies/clears shields when the app is not running.
+//  DeviceActivityMonitor extension — shields, unshields, and opened-app presence queueing.
 //
 
 import DeviceActivity
@@ -28,6 +28,20 @@ class StudyHallMonitor: DeviceActivityMonitor {
         super.intervalDidEnd(for: activity)
         store.clearAllSettings()
         print("[DeviceActivity Monitor] intervalDidEnd — shields cleared")
+    }
+
+    override func eventDidReachThreshold(
+        _ event: DeviceActivityEvent.Name,
+        activity: DeviceActivityName
+    ) {
+        super.eventDidReachThreshold(event, activity: activity)
+
+        guard event.rawValue == "openedBlockedApp" else {
+            print("[DeviceActivity Monitor] Ignoring unhandled event: \(event.rawValue)")
+            return
+        }
+
+        ExtensionSessionBridge.handleBlockedAppOpened()
     }
 
     private func applyShields() {

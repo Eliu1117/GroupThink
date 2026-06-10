@@ -12,5 +12,9 @@
 	<array>
 		<string>group.com.davechengapps.screentimedemo</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)group.com.davechengapps.screentimedemo</string>
+	</array>
 </dict>
 </plist>

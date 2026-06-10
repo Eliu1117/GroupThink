@@ -6,6 +6,7 @@
 //
 
 import Combine
+import FamilyControls
 import FirebaseFirestore
 import Foundation
 import SwiftUI
@@ -69,10 +70,11 @@ final class SessionViewModel: ObservableObject {
         sessionListener = nil
         countdownTask?.cancel()
         countdownTask = nil
+        SessionContextStore.shared.clearAll()
+        SessionActivityScheduler.stopMonitoring()
 
         if didApplyBlocking {
             BlockingManager.shared.clear()
-            SessionActivityScheduler.stopMonitoring()
             didApplyBlocking = false
             print("[Firestore Session] Cleared local blocking on listener stop")
         }
@@ -178,8 +180,13 @@ final class SessionViewModel: ObservableObject {
             Task { await updatePresence(.left) }
 
         case .active:
-            print("[Firestore Presence] App became active — marking focused")
-            Task { await updatePresence(.focused) }
+            Task {
+                let flushedOpened = await flushPendingOpenedEvents()
+                if !flushedOpened, myState == .left {
+                    print("[Firestore Presence] App became active — restoring focused")
+                    await updatePresence(.focused)
+                }
+            }
 
         case .inactive:
             break
@@ -187,6 +194,35 @@ final class SessionViewModel: ObservableObject {
         @unknown default:
             break
         }
+    }
+
+    /// Flushes extension-queued `opened` events from the App Group into Firestore.
+    @discardableResult
+    func flushPendingOpenedEvents() async -> Bool {
+        let events = SessionContextStore.shared.drainPendingOpenedEvents()
+        guard !events.isEmpty else { return false }
+
+        for event in events {
+            do {
+                try await SessionService.shared.markOpened(
+                    groupID: event.groupID,
+                    sessionID: event.sessionID,
+                    userUID: event.userUID
+                )
+                print("[Firestore Presence] Flushed opened event for \(event.userUID)")
+            } catch {
+                SessionContextStore.shared.enqueuePendingOpened(
+                    for: ActiveSessionContext(
+                        groupID: event.groupID,
+                        sessionID: event.sessionID,
+                        userUID: event.userUID
+                    )
+                )
+                print("[Firestore Presence] Failed to flush opened event — re-queued: \(error.localizedDescription)")
+            }
+        }
+
+        return true
     }
 
     func endSession() async -> Bool {
@@ -246,6 +282,7 @@ final class SessionViewModel: ObservableObject {
             switch session.status {
             case .lobby:
                 stopCountdown()
+                SessionContextStore.shared.setActiveSession(nil)
                 SessionActivityScheduler.stopMonitoring()
                 scheduledEndDate = nil
                 if didApplyBlocking {
@@ -254,14 +291,19 @@ final class SessionViewModel: ObservableObject {
                 }
 
             case .active:
+                // Persist App Group context before scheduling background DeviceActivity monitoring.
+                persistActiveSessionContext(for: session)
                 if statusChanged || !didApplyBlocking {
                     applyLocalBlocking(for: session)
                 }
                 if let endDate = session.endDate, scheduledEndDate != endDate {
-                    scheduleBackgroundMonitoring(until: endDate)
+                    scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
                     scheduledEndDate = endDate
+                } else if statusChanged, session.endDate == nil {
+                    scheduleBackgroundMonitoring(until: Date().addingTimeInterval(TimeInterval(session.durationMin * 60)), selection: BlocklistStore.shared.selection)
                 }
                 startCountdown(for: session)
+                Task { await flushPendingOpenedEvents() }
 
             case .ended:
                 clearLocalSessionState()
@@ -286,13 +328,29 @@ final class SessionViewModel: ObservableObject {
         print("[Firestore Session] Applied local app shields")
 
         if let endDate = session.endDate {
-            scheduleBackgroundMonitoring(until: endDate)
+            scheduleBackgroundMonitoring(until: endDate, selection: selection)
         }
     }
 
-    private func scheduleBackgroundMonitoring(until endDate: Date) {
+    private func persistActiveSessionContext(for session: StudySession) {
+        guard let groupID, let currentUID, session.participants[currentUID] != nil else { return }
+
+        // Write session metadata to the App Group before DeviceActivity monitoring begins.
+        SessionContextStore.shared.setActiveSession(
+            ActiveSessionContext(
+                groupID: groupID,
+                sessionID: session.id,
+                userUID: currentUID
+            )
+        )
+    }
+
+    private func scheduleBackgroundMonitoring(
+        until endDate: Date,
+        selection: FamilyActivitySelection
+    ) {
         do {
-            try SessionActivityScheduler.startMonitoring(until: endDate)
+            try SessionActivityScheduler.startMonitoring(until: endDate, selection: selection)
         } catch {
             print("[DeviceActivity] Failed to start monitoring: \(error.localizedDescription)")
         }
@@ -350,14 +408,16 @@ final class SessionViewModel: ObservableObject {
         stopCountdown()
         secondsRemaining = 0
         scheduledEndDate = nil
+        SessionContextStore.shared.clearAll()
         SessionActivityScheduler.stopMonitoring()
+
         if didApplyBlocking {
             BlockingManager.shared.clear()
-            SessionActivityScheduler.stopMonitoring()
             didApplyBlocking = false
             print("[Firestore Session] Cleared local blocking — session ended")
         }
 
+        participants = []
         if session?.status == .ended {
             session = nil
             previousStatus = nil

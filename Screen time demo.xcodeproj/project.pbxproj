@@ -16,6 +16,9 @@
 		AD7E961A2FCE81F7009F57F6 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96192FCE81F7009F57F6 /* FirebaseMessaging */; };
 		AD7E961C2FCE81F7009F57F6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E961B2FCE81F7009F57F6 /* FirebaseStorage */; };
 		B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B1C2D3F02FCE90010023BF62 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96112FCE81F7009F57F6 /* FirebaseCore */; };
+		B1C2D3F12FCE90010023BF62 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E96152FCE81F7009F57F6 /* FirebaseFirestore */; };
+		B1C2D3F22FCE90010023BF62 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E960F2FCE81F7009F57F6 /* FirebaseAuth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -133,6 +136,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1C2D3F02FCE90010023BF62 /* FirebaseCore in Frameworks */,
+				B1C2D3F12FCE90010023BF62 /* FirebaseFirestore in Frameworks */,
+				B1C2D3F22FCE90010023BF62 /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -259,6 +265,9 @@
 			);
 			name = StudyHallMonitor;
 			packageProductDependencies = (
+				AD7E96112FCE81F7009F57F6 /* FirebaseCore */,
+				AD7E96152FCE81F7009F57F6 /* FirebaseFirestore */,
+				AD7E960F2FCE81F7009F57F6 /* FirebaseAuth */,
 			);
 			productName = StudyHallMonitor;
 			productReference = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */;

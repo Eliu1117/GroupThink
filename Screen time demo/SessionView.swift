@@ -36,7 +36,11 @@ struct SessionView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                participantRoster(session)
+                PresenceLeaderboardView(
+                    participants: viewModel.participants,
+                    memberNames: memberNames,
+                    hostUid: session.hostUid
+                )
 
                 lobbyActions(session)
             }
@@ -89,11 +93,11 @@ struct SessionView: View {
                 .padding()
                 .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
 
-                participantRoster(session)
-
-                if session.status == .active, viewModel.isInLobby {
-                    stateControls
-                }
+                PresenceLeaderboardView(
+                    participants: viewModel.participants,
+                    memberNames: memberNames,
+                    hostUid: session.hostUid
+                )
 
                 if viewModel.isHost {
                     Button(role: .destructive) {
@@ -107,70 +111,6 @@ struct SessionView: View {
                 }
             }
             .padding(.vertical, 4)
-        }
-    }
-
-    private var stateControls: some View {
-        HStack(spacing: 12) {
-            Button {
-                Task { await viewModel.updateMyState(.focused) }
-            } label: {
-                Label("Focused", systemImage: "checkmark.circle.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(viewModel.myState == .focused ? .green : .green.opacity(0.5))
-
-            Button {
-                Task { await viewModel.updateMyState(.break) }
-            } label: {
-                Label("Break", systemImage: "cup.and.saucer.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(viewModel.myState == .break ? .orange : .secondary)
-        }
-    }
-
-    // MARK: - Roster
-
-    private func participantRoster(_ session: StudySession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Participants (\(session.participants.count))")
-                .font(.subheadline.bold())
-
-            ForEach(session.participantList) { participant in
-                HStack(spacing: 10) {
-                    Image(systemName: participant.state.systemImage)
-                        .foregroundStyle(color(for: participant.state))
-
-                    Text(memberNames[participant.id] ?? "Member")
-                        .font(.body)
-
-                    if participant.id == session.hostUid {
-                        Text("Host")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.tint.opacity(0.15), in: Capsule())
-                    }
-
-                    Spacer()
-
-                    Text(participant.state.label)
-                        .font(.caption)
-                        .foregroundStyle(color(for: participant.state))
-                }
-            }
-        }
-    }
-
-    private func color(for state: ParticipantState) -> Color {
-        switch state {
-        case .focused: return .green
-        case .break: return .orange
-        case .left: return .yellow
-        case .opened: return .red
         }
     }
 }

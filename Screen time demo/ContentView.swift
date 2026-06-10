@@ -152,7 +152,7 @@ struct ContentView: View {
         timeRemaining = Self.blockDurationSeconds
 
         let endDate = Date().addingTimeInterval(TimeInterval(Self.blockDurationSeconds))
-        try? SessionActivityScheduler.startMonitoring(until: endDate)
+        try? SessionActivityScheduler.startMonitoring(until: endDate, selection: selection)
 
         blockTask?.cancel()
         blockTask = Task {

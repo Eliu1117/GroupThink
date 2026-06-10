@@ -67,6 +67,7 @@ final class AuthViewModel: ObservableObject {
                 self.isAuthenticated = user != nil
                 if let user {
                     print("[Auth] Auth state changed — signed in as \(user.uid)")
+                    FirebaseAuthConfigurator.configureSharedKeychainAccess()
                     await self.syncProfileToFirestore()
                 } else {
                     print("[Auth] Auth state changed — signed out")
@@ -139,6 +140,7 @@ final class AuthViewModel: ObservableObject {
             print("[Auth] Signing in to Firebase with Apple credential")
             let authResult = try await Auth.auth().signIn(with: credential)
             print("[Auth] Firebase sign-in succeeded — uid: \(authResult.user.uid)")
+            FirebaseAuthConfigurator.configureSharedKeychainAccess()
             try await upsertUserDocument(
                 for: authResult.user,
                 fullName: appleCredential.fullName

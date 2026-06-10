@@ -2,11 +2,16 @@
 //  SessionActivityScheduler.swift
 //  Screen time demo
 //
-//  Schedules DeviceActivity intervals for reliable background unblock.
+//  Schedules DeviceActivity intervals and threshold events for reliable background unblock + opened-app detection.
 //
 
 import DeviceActivity
+import FamilyControls
 import Foundation
+
+extension DeviceActivityEvent.Name {
+    static let openedBlockedApp = Self(StudyHallConstants.openedBlockedAppEventName)
+}
 
 enum SessionActivityScheduler {
     private static let center = DeviceActivityCenter()
@@ -15,7 +20,10 @@ enum SessionActivityScheduler {
         DeviceActivityName(StudyHallConstants.studyHallActivityName)
     }
 
-    static func startMonitoring(until endDate: Date) throws {
+    static func startMonitoring(
+        until endDate: Date,
+        selection: FamilyActivitySelection
+    ) throws {
         stopMonitoring()
 
         let now = Date()
@@ -40,8 +48,23 @@ enum SessionActivityScheduler {
             repeats: false
         )
 
-        try center.startMonitoring(activityName, during: schedule)
-        print("[DeviceActivity] Scheduled monitoring until \(endDate.formatted())")
+        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+        if !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty {
+            let openedEvent = DeviceActivityEvent(
+                applications: selection.applicationTokens,
+                categories: selection.categoryTokens,
+                threshold: DateComponents(second: 1)
+            )
+            events[.openedBlockedApp] = openedEvent
+        }
+
+        if events.isEmpty {
+            try center.startMonitoring(activityName, during: schedule)
+        } else {
+            try center.startMonitoring(activityName, during: schedule, events: events)
+        }
+
+        print("[DeviceActivity] Scheduled monitoring until \(endDate.formatted()) with \(events.count) event(s)")
     }
 
     static func stopMonitoring() {

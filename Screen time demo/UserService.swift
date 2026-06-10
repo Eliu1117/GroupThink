@@ -78,4 +78,24 @@ final class UserService {
         guard snapshot.exists, let data = snapshot.data() else { return nil }
         return data["displayName"] as? String
     }
+
+    // MARK: - Push tokens (Phase 4)
+
+    /// Appends a device FCM token to `users/{uid}.fcmTokens` (deduplicated by Firestore arrayUnion).
+    func saveFCMToken(uid: String, token: String) async throws {
+        let ref = db.collection("users").document(uid)
+        let snapshot = try await ref.getDocument()
+
+        if snapshot.exists {
+            try await ref.updateData([
+                "fcmTokens": FieldValue.arrayUnion([token]),
+            ])
+        } else {
+            try await ref.setData([
+                "fcmTokens": [token],
+            ], merge: true)
+        }
+
+        print("[UserService] Saved FCM token for \(uid)")
+    }
 }
