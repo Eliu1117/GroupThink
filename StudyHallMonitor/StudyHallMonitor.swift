@@ -41,7 +41,9 @@ class StudyHallMonitor: DeviceActivityMonitor {
             return
         }
 
+        // Blocks until Firestore write completes or times out — keeps the ephemeral extension thread alive.
         ExtensionSessionBridge.handleBlockedAppOpened()
+        print("[DeviceActivity Monitor] openedBlockedApp threshold handled")
     }
 
     private func applyShields() {

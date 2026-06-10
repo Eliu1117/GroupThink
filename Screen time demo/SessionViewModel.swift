@@ -26,6 +26,7 @@ final class SessionViewModel: ObservableObject {
     private var didApplyBlocking = false
     private var previousStatus: SessionStatus?
     private var scheduledEndDate: Date?
+    private var isTearingDown = false
 
     deinit {
         sessionListener?.remove()
@@ -66,18 +67,8 @@ final class SessionViewModel: ObservableObject {
     }
 
     func stopListening() {
-        sessionListener?.remove()
-        sessionListener = nil
-        countdownTask?.cancel()
-        countdownTask = nil
-        SessionContextStore.shared.clearAll()
-        SessionActivityScheduler.stopMonitoring()
-
-        if didApplyBlocking {
-            BlockingManager.shared.clear()
-            didApplyBlocking = false
-            print("[Firestore Session] Cleared local blocking on listener stop")
-        }
+        detachSessionListener()
+        haltLocalSessionInfrastructure(reason: "listener stop")
     }
 
     // MARK: - Actions
@@ -226,23 +217,37 @@ final class SessionViewModel: ObservableObject {
     }
 
     func endSession() async -> Bool {
-        guard let groupID, let currentUID, let session else { return false }
+        guard let groupID, let currentUID, let activeSession = session, !isTearingDown else { return false }
 
+        let sessionID = activeSession.id
+        isTearingDown = true
         isSubmitting = true
         errorMessage = nil
-        defer { isSubmitting = false }
+
+        // Halt monitoring and extension context before the Firestore write to prevent races.
+        haltLocalSessionInfrastructure(reason: "end session")
+
+        defer {
+            isSubmitting = false
+            isTearingDown = false
+        }
 
         do {
             try await SessionService.shared.endSession(
                 groupID: groupID,
-                sessionID: session.id,
+                sessionID: sessionID,
                 requesterUID: currentUID
             )
-            clearLocalSessionState()
+            detachSessionListener()
+            self.session = nil
+            participants = []
+            previousStatus = nil
+            print("[Firestore Session] Session \(sessionID) ended — local state cleared")
             return true
         } catch {
             errorMessage = error.localizedDescription
             print("[Firestore Session] Error ending session: \(error.localizedDescription)")
+            reattachListenerIfNeeded()
             return false
         }
     }
@@ -273,6 +278,8 @@ final class SessionViewModel: ObservableObject {
     // MARK: - Private
 
     private func handleSessionUpdate(_ session: StudySession?) {
+        guard !isTearingDown else { return }
+
         if let session {
             let statusChanged = previousStatus != session.status
             previousStatus = session.status
@@ -306,13 +313,10 @@ final class SessionViewModel: ObservableObject {
                 Task { await flushPendingOpenedEvents() }
 
             case .ended:
-                clearLocalSessionState()
+                finalizeSessionTeardown(clearSessionDocument: true)
             }
         } else {
-            self.session = nil
-            participants = []
-            previousStatus = nil
-            clearLocalSessionState()
+            finalizeSessionTeardown(clearSessionDocument: true)
         }
     }
 
@@ -382,11 +386,8 @@ final class SessionViewModel: ObservableObject {
                         Task {
                             if self.isHost {
                                 _ = await self.endSession()
-                            } else if self.didApplyBlocking {
-                                BlockingManager.shared.clear()
-                                SessionActivityScheduler.stopMonitoring()
-                                self.didApplyBlocking = false
-                                print("[Firestore Session] Timer expired — cleared local blocking")
+                            } else {
+                                self.haltLocalSessionInfrastructure(reason: "timer expired (participant)")
                             }
                         }
                     }
@@ -404,7 +405,8 @@ final class SessionViewModel: ObservableObject {
         countdownTask = nil
     }
 
-    private func clearLocalSessionState() {
+    /// Stops countdown, DeviceActivity monitoring, App Group context, and local shields together.
+    private func haltLocalSessionInfrastructure(reason: String) {
         stopCountdown()
         secondsRemaining = 0
         scheduledEndDate = nil
@@ -414,13 +416,54 @@ final class SessionViewModel: ObservableObject {
         if didApplyBlocking {
             BlockingManager.shared.clear()
             didApplyBlocking = false
-            print("[Firestore Session] Cleared local blocking — session ended")
+            print("[Firestore Session] Cleared local blocking — \(reason)")
         }
+    }
 
+    private func detachSessionListener() {
+        sessionListener?.remove()
+        sessionListener = nil
+        countdownTask?.cancel()
+        countdownTask = nil
+    }
+
+    private func finalizeSessionTeardown(clearSessionDocument: Bool) {
+        haltLocalSessionInfrastructure(reason: "session teardown")
         participants = []
-        if session?.status == .ended {
+
+        if clearSessionDocument {
             session = nil
             previousStatus = nil
+        }
+    }
+
+    private func reattachListenerIfNeeded() {
+        guard let groupID, sessionListener == nil else { return }
+
+        print("[Firestore Session] Re-attaching listener after failed end")
+        sessionListener = SessionService.shared.observeLiveSession(groupID: groupID) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+
+                switch result {
+                case .success(let session):
+                    self.handleSessionUpdate(session)
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
+                    print("[Firestore Session] Listener error: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        if let session, session.status == .active {
+            persistActiveSessionContext(for: session)
+            if let endDate = session.endDate ?? scheduledEndDate {
+                scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
+            }
+            if !didApplyBlocking, BlocklistStore.shared.hasSelection {
+                applyLocalBlocking(for: session)
+            }
+            startCountdown(for: session)
         }
     }
 }

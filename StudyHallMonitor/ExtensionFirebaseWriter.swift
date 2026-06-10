@@ -22,6 +22,7 @@ enum ExtensionFirebaseWriter {
     private static var isConfigured = false
 
     /// Marks the current user as `opened` on the active session document.
+    /// Blocks the extension thread until the write completes or times out so iOS does not suspend the process mid-flight.
     static func markOpenedFromBackground() {
         guard let context = loadSessionContext() else {
             print("[Extension Firebase] Missing session context — cannot write opened state")
@@ -41,15 +42,27 @@ enum ExtensionFirebaseWriter {
             .collection("groups").document(context.groupID)
             .collection("sessions").document(context.sessionID)
 
+        let semaphore = DispatchSemaphore(value: 0)
+        var writeError: Error?
+
         document.updateData([
             "participants.\(context.userUID).state": "opened",
         ]) { error in
+            writeError = error
             if let error {
-                print("[Extension Firebase] Firestore write failed — queueing fallback: \(error.localizedDescription)")
-                ExtensionSessionBridge.enqueuePendingOpenedFallback()
+                print("[Extension Firebase] ERROR: Background update failed: \(error.localizedDescription)")
             } else {
-                print("[Extension Firebase] Wrote opened state for \(context.userUID) on session \(context.sessionID)")
+                print("[Extension Firebase] SUCCESS: Background status set to opened for \(context.userUID)")
             }
+            semaphore.signal()
+        }
+
+        let waitResult = semaphore.wait(timeout: .now() + 5.0)
+        if waitResult == .timedOut {
+            print("[Extension Firebase] Firestore write timed out after 5s — queueing fallback")
+            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+        } else if writeError != nil {
+            ExtensionSessionBridge.enqueuePendingOpenedFallback()
         }
     }
 
