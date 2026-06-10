@@ -42,9 +42,10 @@ class StudyHallMonitor: DeviceActivityMonitor {
             return
         }
 
-        // Threshold events require sustained usage and miss short taps.
-        // StudyHallShield reports "opened" the instant the shield UI is requested.
-        print("[DeviceActivity Monitor] openedBlockedApp threshold observed (handled by StudyHallShield)")
+        // Backup trigger: StudyHallShield handles the instant report; this catches cases
+        // where the shield extension never ran. Queues fallback + attempts direct upload.
+        print("[DeviceActivity Monitor] openedBlockedApp threshold — reporting opened (backup path)")
+        ExtensionFirebaseWriter.markOpenedFromBackground(source: .monitor)
     }
 
     private func applyShields() {

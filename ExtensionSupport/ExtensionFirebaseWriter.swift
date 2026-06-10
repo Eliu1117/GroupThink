@@ -36,10 +36,12 @@ enum ExtensionFirebaseWriter {
         static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
         static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
         static let lastOpenedReportKey = "studyHall.lastOpenedReport"
+        static let lastOpenedReportAtKey = "studyHall.lastOpenedReportAt"
         static let projectIDPlistKey = "PROJECT_ID"
     }
 
     private static let tokenExpiryBuffer: TimeInterval = 60
+    private static let directUploadDedupeWindow: TimeInterval = 30
     private static let sessionDelegate = BackgroundURLSessionDelegate.shared
     private static var backgroundSessions: [String: URLSession] = [:]
     private static let sessionLock = NSLock()
@@ -51,36 +53,33 @@ enum ExtensionFirebaseWriter {
     ) {
         guard let context else {
             print("[\(source.logLabel)] Missing session context — cannot write opened state")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
-        guard shouldReportOpened(context: context) else {
-            print("[\(source.logLabel)] Skipping duplicate opened report for \(context.userUID)")
+        // Always queue the App Group fallback first. The system may silently defer or drop
+        // background uploads from shield/monitor extensions, and the main app's foreground
+        // flush is the only guaranteed delivery path.
+        ExtensionSessionBridge.enqueuePendingOpenedFallback()
+
+        guard shouldAttemptDirectUpload(context: context) else {
+            print("[\(source.logLabel)] Direct upload recently attempted for \(context.userUID) — fallback queued")
             return
         }
 
         guard let projectID = loadProjectID() else {
-            print("[\(source.logLabel)] Missing Firebase project ID — queueing fallback")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            print("[\(source.logLabel)] Missing Firebase project ID — relying on queued fallback")
             return
         }
 
         guard let idToken = loadCachedIDToken() else {
-            print("[\(source.logLabel)] No valid cached ID token — queueing fallback")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            print("[\(source.logLabel)] No valid cached ID token — relying on queued fallback")
             return
         }
 
-        guard enqueueBackgroundPatch(
-            source: source,
-            projectID: projectID,
-            context: context,
-            idToken: idToken
-        ) else {
-            print("[\(source.logLabel)] Failed to enqueue background upload — queueing fallback")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
-            return
+        if enqueueBackgroundPatch(source: source, projectID: projectID, context: context, idToken: idToken) {
+            markDirectUploadAttempted(context: context)
+        } else {
+            print("[\(source.logLabel)] Failed to enqueue background upload — relying on queued fallback")
         }
     }
 
@@ -161,17 +160,28 @@ enum ExtensionFirebaseWriter {
         return try? JSONSerialization.data(withJSONObject: body)
     }
 
-    private static func shouldReportOpened(context: ExtensionSessionContext) -> Bool {
+    /// Dedupes rapid repeated shield renders, but only suppresses uploads that were actually
+    /// enqueued recently — a failed attempt never blocks the next one.
+    private static func shouldAttemptDirectUpload(context: ExtensionSessionContext) -> Bool {
         guard let defaults = UserDefaults(suiteName: Keys.appGroupID) else { return true }
 
-        let marker = "\(context.sessionID):\(context.userUID)"
-        if defaults.string(forKey: Keys.lastOpenedReportKey) == marker {
-            return false
+        guard defaults.string(forKey: Keys.lastOpenedReportKey) == marker(for: context) else {
+            return true
         }
 
-        defaults.set(marker, forKey: Keys.lastOpenedReportKey)
+        let lastAttempt = defaults.double(forKey: Keys.lastOpenedReportAtKey)
+        return Date().timeIntervalSince1970 - lastAttempt > directUploadDedupeWindow
+    }
+
+    private static func markDirectUploadAttempted(context: ExtensionSessionContext) {
+        guard let defaults = UserDefaults(suiteName: Keys.appGroupID) else { return }
+        defaults.set(marker(for: context), forKey: Keys.lastOpenedReportKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: Keys.lastOpenedReportAtKey)
         defaults.synchronize()
-        return true
+    }
+
+    private static func marker(for context: ExtensionSessionContext) -> String {
+        "\(context.sessionID):\(context.userUID)"
     }
 
     // MARK: - App Group / plist reads

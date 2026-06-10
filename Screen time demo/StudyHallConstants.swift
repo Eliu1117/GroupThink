@@ -32,6 +32,7 @@ enum StudyHallConstants {
 
     /// Dedupes repeated shield-configuration callbacks for the same session participant.
     static let lastOpenedReportKey = "studyHall.lastOpenedReport"
+    static let lastOpenedReportAtKey = "studyHall.lastOpenedReportAt"
 
     static let backgroundURLSessionIdentifiers = [
         backgroundURLSessionIdentifier,
