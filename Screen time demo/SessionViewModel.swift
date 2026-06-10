@@ -107,7 +107,6 @@ final class SessionViewModel: ObservableObject {
         do {
             try await SessionService.shared.joinSession(
                 groupID: groupID,
-                sessionID: session.id,
                 userUID: currentUID
             )
             return true
@@ -128,7 +127,6 @@ final class SessionViewModel: ObservableObject {
         do {
             try await SessionService.shared.launchSession(
                 groupID: groupID,
-                sessionID: session.id,
                 hostUID: currentUID
             )
             return true
@@ -151,7 +149,6 @@ final class SessionViewModel: ObservableObject {
         do {
             try await SessionService.shared.updatePresence(
                 groupID: groupID,
-                sessionID: session.id,
                 userUID: currentUID,
                 state: state
             )
@@ -198,7 +195,6 @@ final class SessionViewModel: ObservableObject {
             do {
                 try await SessionService.shared.markOpened(
                     groupID: event.groupID,
-                    sessionID: event.sessionID,
                     userUID: event.userUID
                 )
                 print("[Firestore Presence] Flushed opened event for \(event.userUID)")
@@ -236,7 +232,6 @@ final class SessionViewModel: ObservableObject {
         do {
             try await SessionService.shared.endSession(
                 groupID: groupID,
-                sessionID: sessionID,
                 requesterUID: currentUID
             )
             awardStats(for: activeSession)

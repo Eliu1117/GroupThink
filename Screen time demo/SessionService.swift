@@ -2,7 +2,13 @@
 //  SessionService.swift
 //  Screen time demo
 //
-//  Firestore reads/writes for `groups/{groupId}/sessions`.
+//  Firestore reads/writes for the group's single active-session slot:
+//  `groups/{groupId}/sessions/current`.
+//
+//  Each new session overwrites this document (setData) and embeds a fresh
+//  UUID in the `sessionId` field. This eliminates per-session document
+//  creation/deletion costs and makes the path predictable for both the
+//  SDK and the extension REST layer.
 //
 
 import FirebaseFirestore
@@ -38,34 +44,38 @@ final class SessionService {
 
     private init() {}
 
-    private func sessions(for groupID: String) -> CollectionReference {
-        db.collection("groups").document(groupID).collection("sessions")
+    /// The single session slot for a group. All sessions share this document path;
+    /// the embedded `sessionId` UUID distinguishes them for stats idempotency.
+    private func activeSessionRef(for groupID: String) -> DocumentReference {
+        db.collection("groups").document(groupID).collection("sessions").document("current")
     }
 
     // MARK: - Observe
 
-    /// Listens for the group's current lobby or active session (at most one).
+    /// Listens on the group's single session slot. Emits the session when its
+    /// status is `lobby` or `active`; emits `nil` for `ended` or a missing document.
     func observeLiveSession(
         groupID: String,
         onChange: @escaping (Result<StudySession?, Error>) -> Void
     ) -> ListenerRegistration {
-        sessions(for: groupID)
-            .whereField("status", in: [SessionStatus.lobby.rawValue, SessionStatus.active.rawValue])
-            .limit(to: 1)
-            .addSnapshotListener { snapshot, error in
-                if let error {
-                    onChange(.failure(error))
-                    return
-                }
-
-                guard let document = snapshot?.documents.first else {
-                    onChange(.success(nil))
-                    return
-                }
-
-                let session = StudySession(id: document.documentID, document: document)
-                onChange(.success(session))
+        activeSessionRef(for: groupID).addSnapshotListener { snapshot, error in
+            if let error {
+                onChange(.failure(error))
+                return
             }
+
+            guard
+                let snapshot,
+                snapshot.exists,
+                let session = StudySession(document: snapshot),
+                session.status != .ended
+            else {
+                onChange(.success(nil))
+                return
+            }
+
+            onChange(.success(session))
+        }
     }
 
     // MARK: - Create
@@ -75,17 +85,20 @@ final class SessionService {
         hostUID: String,
         durationMin: Int = 25
     ) async throws -> String {
-        let existing = try await sessions(for: groupID)
-            .whereField("status", in: [SessionStatus.lobby.rawValue, SessionStatus.active.rawValue])
-            .limit(to: 1)
-            .getDocuments()
+        let ref = activeSessionRef(for: groupID)
 
-        guard existing.documents.isEmpty else {
+        // Cheap single-document read — no collection query or index scan needed.
+        let existing = try await ref.getDocument()
+        if existing.exists,
+           let statusRaw = existing.data()?["status"] as? String,
+           let status = SessionStatus(rawValue: statusRaw),
+           status == .lobby || status == .active {
             throw SessionServiceError.sessionAlreadyActive
         }
 
-        let ref = sessions(for: groupID).document()
+        let sessionID = UUID().uuidString
         let data: [String: Any] = [
+            "sessionId": sessionID,
             "status": SessionStatus.lobby.rawValue,
             "hostUid": hostUID,
             "durationMin": durationMin,
@@ -96,27 +109,26 @@ final class SessionService {
         ]
 
         try await ref.setData(data)
-        print("[Firestore Session] Created session \(ref.documentID) in group \(groupID)")
-        return ref.documentID
+        print("[Firestore Session] Started session \(sessionID) in group \(groupID)")
+        return sessionID
     }
 
     // MARK: - Join
 
-    func joinSession(groupID: String, sessionID: String, userUID: String) async throws {
-        let ref = sessions(for: groupID).document(sessionID)
-        try await ref.updateData([
+    func joinSession(groupID: String, userUID: String) async throws {
+        try await activeSessionRef(for: groupID).updateData([
             "participants.\(userUID)": ["state": ParticipantState.focused.rawValue],
         ])
-        print("[Firestore Session] User \(userUID) joined session \(sessionID)")
+        print("[Firestore Session] User \(userUID) joined session")
     }
 
     // MARK: - Launch
 
-    func launchSession(groupID: String, sessionID: String, hostUID: String) async throws {
-        let ref = sessions(for: groupID).document(sessionID)
+    func launchSession(groupID: String, hostUID: String) async throws {
+        let ref = activeSessionRef(for: groupID)
         let snapshot = try await ref.getDocument()
 
-        guard let session = StudySession(id: snapshot.documentID, document: snapshot) else {
+        guard let session = StudySession(document: snapshot) else {
             throw SessionServiceError.sessionNotFound
         }
 
@@ -128,19 +140,17 @@ final class SessionService {
             "status": SessionStatus.active.rawValue,
             "startAt": FieldValue.serverTimestamp(),
         ])
-        print("[Firestore Session] Launched session \(sessionID)")
+        print("[Firestore Session] Launched session \(session.id)")
     }
 
     // MARK: - Participant state
 
     func updateParticipantState(
         groupID: String,
-        sessionID: String,
         userUID: String,
         state: ParticipantState
     ) async throws {
-        let ref = sessions(for: groupID).document(sessionID)
-        try await ref.updateData([
+        try await activeSessionRef(for: groupID).updateData([
             "participants.\(userUID).state": state.rawValue,
         ])
         print("[Firestore Session] Updated \(userUID) state to \(state.rawValue)")
@@ -148,55 +158,46 @@ final class SessionService {
 
     // MARK: - Presence (Phase 4)
 
-    /// Real-time listener on a specific session document's `participants` map.
+    /// Real-time listener on the session slot's `participants` map.
     func observeSessionParticipants(
         groupID: String,
-        sessionID: String,
         onChange: @escaping (Result<[String: ParticipantState], Error>) -> Void
     ) -> ListenerRegistration {
-        sessions(for: groupID)
-            .document(sessionID)
-            .addSnapshotListener { snapshot, error in
-                if let error {
-                    onChange(.failure(error))
-                    return
-                }
-
-                guard let snapshot, snapshot.exists else {
-                    onChange(.success([:]))
-                    return
-                }
-
-                onChange(.success(Self.parseParticipants(from: snapshot)))
+        activeSessionRef(for: groupID).addSnapshotListener { snapshot, error in
+            if let error {
+                onChange(.failure(error))
+                return
             }
+
+            guard let snapshot, snapshot.exists else {
+                onChange(.success([:]))
+                return
+            }
+
+            onChange(.success(Self.parseParticipants(from: snapshot)))
+        }
     }
 
     /// Writes the authenticated user's presence state to `participants.{uid}.state`.
     func updatePresence(
         groupID: String,
-        sessionID: String,
         userUID: String,
         state: ParticipantState
     ) async throws {
-        try await updateParticipantState(
-            groupID: groupID,
-            sessionID: sessionID,
-            userUID: userUID,
-            state: state
-        )
+        try await updateParticipantState(groupID: groupID, userUID: userUID, state: state)
         print("[Firestore Presence] Updated \(userUID) → \(state.rawValue)")
     }
 
-    func markFocused(groupID: String, sessionID: String, userUID: String) async throws {
-        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .focused)
+    func markFocused(groupID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, userUID: userUID, state: .focused)
     }
 
-    func markLeft(groupID: String, sessionID: String, userUID: String) async throws {
-        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .left)
+    func markLeft(groupID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, userUID: userUID, state: .left)
     }
 
-    func markOpened(groupID: String, sessionID: String, userUID: String) async throws {
-        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .opened)
+    func markOpened(groupID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, userUID: userUID, state: .opened)
     }
 
     static func parseParticipants(from document: DocumentSnapshot) -> [String: ParticipantState] {
@@ -219,13 +220,13 @@ final class SessionService {
 
     // MARK: - End
 
-    /// Verifies the caller is the host then permanently deletes the session document.
-    /// All listeners drop to nil immediately, triggering local teardown on every device.
-    func endSession(groupID: String, sessionID: String, requesterUID: String) async throws {
-        let ref = sessions(for: groupID).document(sessionID)
+    /// Verifies the caller is the host then marks the session `ended`.
+    /// The slot document stays in place so the next session can overwrite it cheaply.
+    func endSession(groupID: String, requesterUID: String) async throws {
+        let ref = activeSessionRef(for: groupID)
         let snapshot = try await ref.getDocument()
 
-        guard let session = StudySession(id: snapshot.documentID, document: snapshot) else {
+        guard let session = StudySession(document: snapshot) else {
             throw SessionServiceError.sessionNotFound
         }
 
@@ -233,7 +234,7 @@ final class SessionService {
             throw SessionServiceError.notHost
         }
 
-        try await ref.delete()
-        print("[Firestore Session] Deleted session document \(sessionID) in group \(groupID)")
+        try await ref.updateData(["status": SessionStatus.ended.rawValue])
+        print("[Firestore Session] Marked session \(session.id) ended in group \(groupID)")
     }
 }

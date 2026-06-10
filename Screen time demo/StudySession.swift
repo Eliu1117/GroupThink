@@ -55,10 +55,10 @@ struct StudySession: Identifiable, Equatable {
     let startAt: Date?
     let participants: [String: ParticipantState]
 
-    init?(
-        id: String,
-        document: DocumentSnapshot
-    ) {
+    /// Initialises from the well-known `sessions/current` document.
+    /// `id` is taken from the stored `sessionId` UUID field so stats idempotency
+    /// works across session resets without relying on the document's Firestore ID.
+    init?(document: DocumentSnapshot) {
         guard document.exists, let data = document.data() else { return nil }
 
         guard
@@ -70,7 +70,8 @@ struct StudySession: Identifiable, Equatable {
             return nil
         }
 
-        self.id = id
+        // Prefer the stored UUID; fall back to documentID for legacy random-ID docs.
+        self.id = (data["sessionId"] as? String) ?? document.documentID
         self.status = status
         self.hostUid = hostUid
         self.durationMin = durationMin
