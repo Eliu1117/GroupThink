@@ -51,8 +51,9 @@ final class GroupService {
             "inviteCode": inviteCode,
             "createdBy": creatorUID,
             "memberUids": [creatorUID],
-            // GRO-9/14/20 default settings
-            "enforceHostBlocks": true,
+            // Default group settings
+            "strictMode": false,
+            "requireBlocklist": true,
             "allowLateJoin": true,
             "creatorOnlyStart": true,
         ]
@@ -126,6 +127,50 @@ final class GroupService {
                 let sorted = groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 onChange(.success(sorted))
             }
+    }
+
+    /// Real-time listener for a single group document (live settings, streaks, roster).
+    func observeGroup(
+        groupID: String,
+        onChange: @escaping (Result<Group?, Error>) -> Void
+    ) -> ListenerRegistration {
+        groups.document(groupID).addSnapshotListener { snapshot, error in
+            if let error {
+                onChange(.failure(error))
+                return
+            }
+
+            guard let snapshot, snapshot.exists else {
+                onChange(.success(nil))
+                return
+            }
+
+            onChange(.success(Group(id: snapshot.documentID, document: snapshot)))
+        }
+    }
+
+    // MARK: - Settings
+
+    /// Updates a single group setting. Only the creator may change settings.
+    func updateGroupSetting(
+        groupID: String,
+        requesterUID: String,
+        key: String,
+        value: Bool
+    ) async throws {
+        let ref = groups.document(groupID)
+        let snapshot = try await ref.getDocument()
+
+        guard let group = Group(id: snapshot.documentID, document: snapshot) else {
+            throw GroupServiceError.invalidInviteCode
+        }
+
+        guard group.createdBy == requesterUID else {
+            throw GroupServiceError.notCreator
+        }
+
+        try await ref.updateData([key: value])
+        print("[Groups] Updated setting \(key) = \(value) on group \(groupID)")
     }
 
     // MARK: - Members

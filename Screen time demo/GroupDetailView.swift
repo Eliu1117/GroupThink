@@ -20,15 +20,20 @@ struct GroupDetailView: View {
     @State private var didCopyCode = false
     @State private var showDeleteConfirmation = false
 
-    private var isCreator: Bool {
-        guard let currentUserUID else { return false }
-        return group.createdBy == currentUserUID
+    /// Live group doc when available; falls back to the pushed snapshot.
+    private var currentGroup: Group {
+        viewModel.liveGroup ?? group
     }
 
-    /// GRO-20: True when the current user is allowed to start a new session.
+    private var isCreator: Bool {
+        guard let currentUserUID else { return false }
+        return currentGroup.createdBy == currentUserUID
+    }
+
+    /// True when the current user is allowed to start a new session.
     private var canStartSession: Bool {
         guard currentUserUID != nil else { return false }
-        return !group.creatorOnlyStart || isCreator
+        return !currentGroup.creatorOnlyStart || isCreator
     }
 
     var body: some View {
@@ -36,8 +41,6 @@ struct GroupDetailView: View {
             if sessionViewModel.session != nil {
                 SessionView(
                     viewModel: sessionViewModel,
-                    // GRO-21: Use participant names hydrated by SessionViewModel so
-                    // names for late-joining members are always up to date.
                     memberNames: sessionViewModel.participantNames
                 )
             }
@@ -46,6 +49,7 @@ struct GroupDetailView: View {
                 sessionActionsSection
             }
 
+            groupSettingsSection
             leaderboardSection
             inviteCodeSection
             membersSection
@@ -70,7 +74,7 @@ struct GroupDetailView: View {
                 }
             }
         }
-        .navigationTitle(group.name)
+        .navigationTitle(currentGroup.name)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             "Delete Group?",
@@ -84,6 +88,9 @@ struct GroupDetailView: View {
         } message: {
             Text("Are you sure you want to permanently delete this group? This action cannot be undone.")
         }
+        .sheet(item: $sessionViewModel.sessionSummary) { summary in
+            SessionSummaryView(summary: summary)
+        }
         .overlay {
             if viewModel.isDeleting || sessionViewModel.isSubmitting {
                 ProgressView()
@@ -94,8 +101,7 @@ struct GroupDetailView: View {
         .task(id: group.memberUids) {
             await authViewModel.syncProfileToFirestore()
 
-            // GRO-9/14/20: Sync group settings into the session VM.
-            sessionViewModel.updateGroupSettings(group: group)
+            sessionViewModel.updateGroupSettings(group: currentGroup)
 
             var knownNames: [String: String] = [:]
             if let currentUserUID {
@@ -103,18 +109,19 @@ struct GroupDetailView: View {
             }
             await viewModel.loadMembers(for: group, knownNames: knownNames)
 
-            // GRO-21: Seed resolved names into SessionViewModel so the roster
-            // immediately shows real names without an extra Firestore round-trip.
             sessionViewModel.seedParticipantNames(viewModel.memberNames)
         }
         .onAppear {
             sessionViewModel.configure(groupID: group.id, currentUID: currentUserUID)
+            viewModel.startObservingGroup(groupID: group.id)
         }
-        // GRO-19: onDisappear no longer calls stopListening().
-        // The countdown and session listener are long-lived in the @StateObject ViewModel
-        // and persist while GroupDetailView is in the navigation stack (e.g. when the
-        // Leaderboard subview is pushed). Cleanup happens in SessionViewModel.deinit
-        // when the view is truly popped from the stack.
+        .onChange(of: viewModel.liveGroup) { _, liveGroup in
+            if let liveGroup {
+                sessionViewModel.updateGroupSettings(group: liveGroup)
+            }
+        }
+        // Session listener and countdown stay alive while subviews (e.g. Leaderboard)
+        // are pushed; cleanup happens in the ViewModels' deinit when truly popped.
         .onChange(of: scenePhase) { _, newPhase in
             sessionViewModel.handleScenePhase(newPhase)
         }
@@ -131,15 +138,89 @@ struct GroupDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            // GRO-20: Disabled when creatorOnlyStart is true and user is not the creator.
             .disabled(!canStartSession || sessionViewModel.isSubmitting)
         } footer: {
             if !canStartSession {
                 Text("Only the group creator can start a session.")
+            } else if currentGroup.strictMode {
+                Text("Strict mode is on: all apps will be blocked except each member's whitelist (set on the Home tab).")
             } else {
                 Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
             }
         }
+    }
+
+    // MARK: - Group settings
+
+    private var groupSettingsSection: some View {
+        Section {
+            settingRow(
+                key: "strictMode",
+                value: currentGroup.strictMode,
+                title: "Strict Mode",
+                symbol: "lock.shield.fill"
+            )
+            settingRow(
+                key: "requireBlocklist",
+                value: currentGroup.requireBlocklist,
+                title: "Require Blocklist",
+                symbol: "checklist"
+            )
+            settingRow(
+                key: "allowLateJoin",
+                value: currentGroup.allowLateJoin,
+                title: "Allow Late Join",
+                symbol: "person.badge.clock.fill"
+            )
+            settingRow(
+                key: "creatorOnlyStart",
+                value: currentGroup.creatorOnlyStart,
+                title: "Creator-Only Start",
+                symbol: "crown.fill"
+            )
+        } header: {
+            Text("Group Settings")
+        } footer: {
+            if isCreator {
+                Text("Strict mode blocks every app on members' devices during sessions, except apps they whitelist on the Home tab.")
+            } else {
+                Text("Only the group creator can change these settings.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingRow(key: String, value: Bool, title: String, symbol: String) -> some View {
+        if isCreator {
+            Toggle(isOn: settingBinding(key: key, value: value)) {
+                Label(title, systemImage: symbol)
+            }
+            .disabled(viewModel.isUpdatingSettings)
+        } else {
+            HStack {
+                Label(title, systemImage: symbol)
+                Spacer()
+                Image(systemName: value ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(value ? .green : .secondary)
+            }
+        }
+    }
+
+    private func settingBinding(key: String, value: Bool) -> Binding<Bool> {
+        Binding(
+            get: { value },
+            set: { newValue in
+                guard let currentUserUID else { return }
+                Task {
+                    await viewModel.updateSetting(
+                        groupID: group.id,
+                        requesterUID: currentUserUID,
+                        key: key,
+                        value: newValue
+                    )
+                }
+            }
+        )
     }
 
     // MARK: - Leaderboard (Phase 5)
@@ -148,7 +229,7 @@ struct GroupDetailView: View {
         Section {
             NavigationLink {
                 GroupLeaderboardView(
-                    group: group,
+                    group: currentGroup,
                     currentUserUID: currentUserUID,
                     memberNames: viewModel.memberNames
                 )
@@ -163,13 +244,13 @@ struct GroupDetailView: View {
     private var inviteCodeSection: some View {
         Section("Invite code") {
             HStack {
-                Text(group.inviteCode)
+                Text(currentGroup.inviteCode)
                     .font(.title2.monospaced().bold())
 
                 Spacer()
 
                 Button {
-                    UIPasteboard.general.string = group.inviteCode
+                    UIPasteboard.general.string = currentGroup.inviteCode
                     didCopyCode = true
                 } label: {
                     Label(didCopyCode ? "Copied" : "Copy", systemImage: didCopyCode ? "checkmark" : "doc.on.doc")
@@ -187,7 +268,7 @@ struct GroupDetailView: View {
     // MARK: - Members
 
     private var membersSection: some View {
-        Section("Members (\(group.memberUids.count))") {
+        Section("Members (\(currentGroup.memberUids.count))") {
             if viewModel.isLoading && viewModel.members.isEmpty {
                 HStack {
                     Spacer()
@@ -202,7 +283,7 @@ struct GroupDetailView: View {
 
                         Text(member.displayName)
 
-                        if member.id == group.createdBy {
+                        if member.id == currentGroup.createdBy {
                             Text("Creator")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
@@ -241,6 +322,7 @@ struct GroupDetailView: View {
         guard let currentUserUID else { return }
 
         sessionViewModel.stopListening()
+        viewModel.stopObservingGroup()
 
         if await viewModel.deleteGroup(groupID: group.id, requesterUID: currentUserUID) {
             dismiss()

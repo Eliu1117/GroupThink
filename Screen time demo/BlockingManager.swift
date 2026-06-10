@@ -18,19 +18,12 @@ final class BlockingManager {
         store.shield.applicationCategories = .specific(selection.categoryTokens)
     }
 
-    /// GRO-9: Applies a merged shield from the personal selection and an optional host
-    /// selection. The union of both token sets is enforced on this device.
-    func blockMerged(personal: FamilyActivitySelection, host: FamilyActivitySelection?) {
-        var appTokens = personal.applicationTokens
-        var categoryTokens = personal.categoryTokens
-
-        if let host {
-            appTokens.formUnion(host.applicationTokens)
-            categoryTokens.formUnion(host.categoryTokens)
-        }
-
-        store.shield.applications = appTokens.isEmpty ? nil : appTokens
-        store.shield.applicationCategories = categoryTokens.isEmpty ? nil : .specific(categoryTokens)
+    /// Strict mode: shields ALL app categories except the user's locally-chosen
+    /// whitelist. No tokens cross devices — the "block everything" policy is a plain
+    /// Bool in Firestore and each device carves out its own exceptions.
+    func blockStrict(whitelist: FamilyActivitySelection) {
+        store.shield.applications = nil
+        store.shield.applicationCategories = .all(except: whitelist.applicationTokens)
     }
 
     func clear() {

@@ -46,6 +46,32 @@ final class PushNotificationService: NSObject {
         }
     }
 
+    // MARK: - Local notifications
+
+    /// Posts an immediate local notification announcing the session has ended.
+    /// Used when the app observes the end while not in the foreground; true remote
+    /// fan-out to killed apps requires an FCM server (Cloud Function — future work).
+    func postSessionEndedNotification(groupName: String, minutesEarned: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Study Hall Ended"
+        content.body = minutesEarned > 0
+            ? "Your session in \(groupName) is over — you earned \(minutesEarned) focus min. See your summary!"
+            : "Your session in \(groupName) is over. See your summary in the app."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "sessionEnded.\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[Notifications] Failed to post session-ended notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func handleTokenRefresh(_ token: String) async {
         guard let uid = Auth.auth().currentUser?.uid else {
             print("[FCM] Skipping token save — no authenticated user")

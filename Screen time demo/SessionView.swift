@@ -36,6 +36,15 @@ struct SessionView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
+                if session.strictMode {
+                    Label("Strict mode: all apps blocked except your whitelist", systemImage: "lock.shield.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.purple)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.purple.opacity(0.1), in: Capsule())
+                }
+
                 // GRO-18: Renamed FocusRosterView
                 FocusRosterView(
                     participants: viewModel.participants,

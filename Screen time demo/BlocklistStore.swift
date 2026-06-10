@@ -40,20 +40,27 @@ final class BlocklistStore {
         return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
     }
 
-    // MARK: - GRO-9: Host blocklist serialisation
+    // MARK: - Strict-mode whitelist
 
-    /// Encodes the current selection as a base64 string for Firestore storage.
-    func encodedAsBase64() -> String? {
-        guard let data = try? PropertyListEncoder().encode(selection) else { return nil }
-        return data.base64EncodedString()
+    /// Apps the user keeps available during strict-mode sessions (everything else is shielded).
+    var whitelistSelection: FamilyActivitySelection {
+        get {
+            guard
+                let data = defaults.data(forKey: StudyHallConstants.whitelistDefaultsKey),
+                let decoded = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data)
+            else {
+                return FamilyActivitySelection()
+            }
+            return decoded
+        }
+        set {
+            guard let data = try? PropertyListEncoder().encode(newValue) else { return }
+            defaults.set(data, forKey: StudyHallConstants.whitelistDefaultsKey)
+        }
     }
 
-    /// Decodes a base64 string (produced by `encodedAsBase64`) back into a selection.
-    /// Returns nil if decoding fails, which is expected when the base64 was encoded on a
-    /// different device (ApplicationToken values are opaque and device-local).
-    static func decodeFromBase64(_ base64: String) -> FamilyActivitySelection? {
-        guard let data = Data(base64Encoded: base64) else { return nil }
-        return try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data)
+    var whitelistCount: Int {
+        whitelistSelection.applicationTokens.count
     }
 
     private func migrateFromStandardDefaultsIfNeeded() {

@@ -13,12 +13,18 @@ struct ContentView: View {
 
     @State private var selection = BlocklistStore.shared.selection
     @State private var showPicker = false
+    @State private var whitelistSelection = BlocklistStore.shared.whitelistSelection
+    @State private var showWhitelistPicker = false
     @State private var isBlocking = false
     @State private var timeRemaining = 0
     @State private var blockTask: Task<Void, Never>?
 
     private var selectedCount: Int {
         selection.applicationTokens.count + selection.categoryTokens.count
+    }
+
+    private var whitelistedCount: Int {
+        whitelistSelection.applicationTokens.count
     }
 
     private var canStartBlock: Bool {
@@ -33,6 +39,7 @@ struct ContentView: View {
                 VStack(spacing: 12) {
                     permissionButton
                     chooseAppsButton
+                    whitelistSection
                     startBlockButton
                     stopButton
                 }
@@ -42,8 +49,12 @@ struct ContentView: View {
             .padding()
             .navigationTitle("Home")
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+            .familyActivityPicker(isPresented: $showWhitelistPicker, selection: $whitelistSelection)
             .onChange(of: selection) { _, newValue in
                 BlocklistStore.shared.selection = newValue
+            }
+            .onChange(of: whitelistSelection) { _, newValue in
+                BlocklistStore.shared.whitelistSelection = newValue
             }
             .onAppear {
                 authManager.refreshAuthorizationStatus()
@@ -118,6 +129,30 @@ struct ContentView: View {
         }
         .buttonStyle(.bordered)
         .disabled(!authManager.isAuthorized || isBlocking)
+    }
+
+    private var whitelistSection: some View {
+        VStack(spacing: 8) {
+            Button {
+                showWhitelistPicker = true
+            } label: {
+                Label(
+                    whitelistedCount > 0
+                        ? "Strict Mode Whitelist (\(whitelistedCount))"
+                        : "Choose Strict Mode Whitelist",
+                    systemImage: "checkmark.shield"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.green)
+            .disabled(!authManager.isAuthorized || isBlocking)
+
+            Text("Apps that stay available when a strict group session blocks everything else. Only individual apps count — categories are ignored.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
     }
 
     private var startBlockButton: some View {

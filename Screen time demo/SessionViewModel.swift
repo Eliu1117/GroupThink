@@ -10,6 +10,7 @@ import FamilyControls
 import FirebaseFirestore
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class SessionViewModel: ObservableObject {
@@ -22,6 +23,8 @@ final class SessionViewModel: ObservableObject {
     @Published private(set) var participantNames: [String: String] = [:]
     /// GRO-20: Exposed so GroupDetailView can conditionally show the start button.
     @Published private(set) var creatorOnlyStart: Bool = true
+    /// Published when a session finishes; drives the animated summary sheet.
+    @Published var sessionSummary: SessionSummary?
 
     private var groupID: String?
     private var currentUID: String?
@@ -31,10 +34,14 @@ final class SessionViewModel: ObservableObject {
     private var previousStatus: SessionStatus?
     private var scheduledEndDate: Date?
     private var isTearingDown = false
+    /// Prevents duplicate summaries when multiple end signals fire for one session.
+    private var lastSummarizedSessionID: String?
 
-    // MARK: - GRO-9/14/20 group settings
-    private var enforceHostBlocks: Bool = true
+    // MARK: - Group settings
+    private var strictMode: Bool = false
+    private var requireBlocklist: Bool = true
     private var allowLateJoin: Bool = true
+    private var groupName: String = "your group"
 
     deinit {
         sessionListener?.remove()
@@ -77,11 +84,13 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
-    /// GRO-9/14/20: Applies group settings from the live Group model.
+    /// Applies group settings from the live Group model.
     func updateGroupSettings(group: Group) {
-        enforceHostBlocks = group.enforceHostBlocks
+        strictMode = group.strictMode
+        requireBlocklist = group.requireBlocklist
         allowLateJoin = group.allowLateJoin
         creatorOnlyStart = group.creatorOnlyStart
+        groupName = group.name
     }
 
     /// GRO-21: Seeds display names from the pre-fetched member roster.
@@ -101,9 +110,21 @@ final class SessionViewModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// Option B: blocks starting/joining a non-strict session without a configured
+    /// blocklist (strict mode shields everything, so no blocklist is needed).
+    private func satisfiesBlocklistPolicy(strictSession: Bool) -> Bool {
+        guard requireBlocklist, !strictSession else { return true }
+        return BlocklistStore.shared.hasSelection
+    }
+
     func createSession(durationMin: Int = 25) async -> Bool {
         guard let groupID, let currentUID else {
             errorMessage = SessionServiceError.notSignedIn.localizedDescription
+            return false
+        }
+
+        guard satisfiesBlocklistPolicy(strictSession: strictMode) else {
+            errorMessage = "This group requires a blocklist. Choose apps to block on the Home tab first."
             return false
         }
 
@@ -111,16 +132,12 @@ final class SessionViewModel: ObservableObject {
         errorMessage = nil
         defer { isSubmitting = false }
 
-        // GRO-9: Encode the host's personal blocklist for session storage.
-        let hostBlocklistData: String? = enforceHostBlocks ? BlocklistStore.shared.encodedAsBase64() : nil
-
         do {
             _ = try await SessionService.shared.createSession(
                 groupID: groupID,
                 hostUID: currentUID,
                 durationMin: durationMin,
-                hostBlocklistData: hostBlocklistData,
-                enforceHostBlocks: enforceHostBlocks
+                strictMode: strictMode
             )
             return true
         } catch {
@@ -133,6 +150,11 @@ final class SessionViewModel: ObservableObject {
     func joinLobby() async -> Bool {
         guard let groupID, let currentUID, let session else { return false }
         guard session.status == .lobby || (session.status == .active && allowLateJoin) else { return false }
+
+        guard satisfiesBlocklistPolicy(strictSession: session.strictMode) else {
+            errorMessage = "This group requires a blocklist. Choose apps to block on the Home tab first."
+            return false
+        }
 
         isSubmitting = true
         errorMessage = nil
@@ -268,7 +290,7 @@ final class SessionViewModel: ObservableObject {
                 groupID: groupID,
                 requesterUID: currentUID
             )
-            awardStats(for: activeSession)
+            handleSessionEnd(for: activeSession)
             // GRO-17: Listener is kept alive here so it can pick up the NEXT session
             // immediately after the host creates one. The listener will emit nil once
             // Firestore reflects the "ended" status and finalizeSessionTeardown cleans up.
@@ -343,43 +365,93 @@ final class SessionViewModel: ObservableObject {
                 }
 
             case .ended:
-                awardStats(for: session)
+                handleSessionEnd(for: session)
                 finalizeSessionTeardown(clearSessionDocument: true)
             }
         } else {
             if previousStatus == .active, let lastSession = self.session {
-                awardStats(for: lastSession)
+                handleSessionEnd(for: lastSession)
             }
             finalizeSessionTeardown(clearSessionDocument: true)
         }
     }
 
-    /// GRO-9: Applies shields using the user's personal blocklist merged with the
-    /// host's enforced selection (when present and decodable on this device).
-    private func applyLocalBlocking(for session: StudySession) {
-        let personal = BlocklistStore.shared.selection
+    // MARK: - Session end (stats + summary + notification)
 
-        let hostSelection: FamilyActivitySelection? = {
-            guard session.enforceHostBlocks,
-                  let base64 = session.hostBlocklistData,
-                  let decoded = BlocklistStore.decodeFromBase64(base64) else { return nil }
-            return decoded
-        }()
+    /// Single funnel for every end-of-session signal: awards stats, publishes the
+    /// animated summary, and posts a local notification when the app isn't foregrounded.
+    private func handleSessionEnd(for session: StudySession) {
+        awardStats(for: session)
+        presentSummary(for: session)
+    }
 
-        guard !personal.applicationTokens.isEmpty
-                || !personal.categoryTokens.isEmpty
-                || hostSelection != nil
-        else {
-            print("[Session] No blocklist configured — skipping shield")
-            return
+    private func computeEarnedMinutes(for session: StudySession) -> Int {
+        guard let currentUID,
+              session.participants[currentUID] == .focused,
+              let startAt = session.startAt
+        else { return 0 }
+
+        let elapsed = Int((Date().timeIntervalSince(startAt) / 60).rounded())
+        return min(session.durationMin, max(elapsed, 0))
+    }
+
+    private func presentSummary(for session: StudySession) {
+        guard let currentUID,
+              session.participants[currentUID] != nil, // observers get no summary
+              session.startAt != nil,                  // session never went active
+              lastSummarizedSessionID != session.id
+        else { return }
+
+        lastSummarizedSessionID = session.id
+
+        let summary = SessionSummary(
+            id: session.id,
+            groupName: groupName,
+            durationMin: session.durationMin,
+            startAt: session.startAt,
+            endedAt: Date(),
+            participants: session.participantList,
+            memberNames: participantNames,
+            myUID: currentUID,
+            myState: session.participants[currentUID],
+            minutesEarned: computeEarnedMinutes(for: session),
+            wasStrictMode: session.strictMode
+        )
+
+        withAnimation(.spring(duration: 0.5)) {
+            sessionSummary = summary
         }
 
-        BlockingManager.shared.blockMerged(personal: personal, host: hostSelection)
-        didApplyBlocking = true
-        print("[Session] Applied merged shields (enforceHostBlocks: \(session.enforceHostBlocks))")
+        // Banner only when the user won't see the in-app summary transition.
+        if UIApplication.shared.applicationState != .active {
+            PushNotificationService.shared.postSessionEndedNotification(
+                groupName: groupName,
+                minutesEarned: summary.minutesEarned
+            )
+        }
+    }
+
+    /// Applies shields for the active session.
+    /// Strict mode: blocks ALL apps except the user's local whitelist (no tokens cross devices).
+    /// Normal mode: blocks the user's personal blocklist selection.
+    private func applyLocalBlocking(for session: StudySession) {
+        if session.strictMode {
+            BlockingManager.shared.blockStrict(whitelist: BlocklistStore.shared.whitelistSelection)
+            didApplyBlocking = true
+            print("[Session] Applied STRICT shields (whitelist: \(BlocklistStore.shared.whitelistCount) app(s))")
+        } else {
+            let personal = BlocklistStore.shared.selection
+            guard BlocklistStore.shared.hasSelection else {
+                print("[Session] No blocklist configured — skipping shield")
+                return
+            }
+            BlockingManager.shared.block(selection: personal)
+            didApplyBlocking = true
+            print("[Session] Applied personal shields")
+        }
 
         if let endDate = session.endDate {
-            scheduleBackgroundMonitoring(until: endDate, selection: personal)
+            scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
         }
     }
 
@@ -472,7 +544,7 @@ final class SessionViewModel: ObservableObject {
                                 _ = await self.endSession()
                             } else {
                                 if let s = self.session {
-                                    self.awardStats(for: s)
+                                    self.handleSessionEnd(for: s)
                                 }
                                 self.haltLocalSessionInfrastructure(reason: "timer expired (participant)")
                             }
@@ -558,7 +630,7 @@ final class SessionViewModel: ObservableObject {
 
     /// Phase 5 — awards focus minutes and streaks for the LOCAL user if they stayed focused.
     /// Idempotent per session (guarded inside StatsService).
-    func awardStats(for session: StudySession) {
+    private func awardStats(for session: StudySession) {
         guard let groupID, let currentUID else { return }
         guard session.participants[currentUID] == .focused else {
             print("[Stats] No award — local user did not stay focused")

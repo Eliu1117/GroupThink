@@ -22,9 +22,11 @@ struct Group: Identifiable, Equatable, Hashable {
     /// Calendar day the group streak was last counted.
     let lastGroupStreakUpdate: Date?
 
-    // MARK: - GRO-9/14/20 settings
-    /// When true, the host's personal blocklist is enforced on all participants at session start.
-    let enforceHostBlocks: Bool
+    // MARK: - Group settings
+    /// When true, sessions block ALL apps on each member's device except their personal whitelist.
+    let strictMode: Bool
+    /// When true, members must have a non-empty blocklist to start/join non-strict sessions.
+    let requireBlocklist: Bool
     /// When true, users may join a session that is already in the active state.
     let allowLateJoin: Bool
     /// When true, only the group creator can start a new session.
@@ -52,7 +54,8 @@ struct Group: Identifiable, Equatable, Hashable {
         self.memberUids = memberUids
         self.currentGroupStreak = data["currentGroupStreak"] as? Int ?? 0
         self.lastGroupStreakUpdate = (data["lastGroupStreakUpdate"] as? Timestamp)?.dateValue()
-        self.enforceHostBlocks = data["enforceHostBlocks"] as? Bool ?? true
+        self.strictMode = data["strictMode"] as? Bool ?? false
+        self.requireBlocklist = data["requireBlocklist"] as? Bool ?? true
         self.allowLateJoin = data["allowLateJoin"] as? Bool ?? true
         self.creatorOnlyStart = data["creatorOnlyStart"] as? Bool ?? true
     }
@@ -65,7 +68,8 @@ struct Group: Identifiable, Equatable, Hashable {
         memberUids: [String],
         currentGroupStreak: Int = 0,
         lastGroupStreakUpdate: Date? = nil,
-        enforceHostBlocks: Bool = true,
+        strictMode: Bool = false,
+        requireBlocklist: Bool = true,
         allowLateJoin: Bool = true,
         creatorOnlyStart: Bool = true
     ) {
@@ -76,7 +80,8 @@ struct Group: Identifiable, Equatable, Hashable {
         self.memberUids = memberUids
         self.currentGroupStreak = currentGroupStreak
         self.lastGroupStreakUpdate = lastGroupStreakUpdate
-        self.enforceHostBlocks = enforceHostBlocks
+        self.strictMode = strictMode
+        self.requireBlocklist = requireBlocklist
         self.allowLateJoin = allowLateJoin
         self.creatorOnlyStart = creatorOnlyStart
     }

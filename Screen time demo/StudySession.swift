@@ -54,14 +54,9 @@ struct StudySession: Identifiable, Equatable {
     let durationMin: Int
     let startAt: Date?
     let participants: [String: ParticipantState]
-    /// GRO-9: Whether the host's personal blocklist is enforced on all participants.
-    let enforceHostBlocks: Bool
-    /// GRO-9: PropertyList-encoded `FamilyActivitySelection` as a base64 string.
-    /// Note: `ApplicationToken` values are device-local and opaque — they cannot be
-    /// applied cross-device. The merge is effective only when host and participant share
-    /// the same physical device (local dev/testing). This field is stored for future
-    /// Apple API improvements.
-    let hostBlocklistData: String?
+    /// Strict mode snapshot taken from the group at session creation: every member's
+    /// device blocks ALL apps except their personal whitelist for the session duration.
+    let strictMode: Bool
 
     /// Initialises from the well-known `sessions/current` document.
     /// `id` is taken from the stored `sessionId` UUID field so stats idempotency
@@ -83,8 +78,7 @@ struct StudySession: Identifiable, Equatable {
         self.status = status
         self.hostUid = hostUid
         self.durationMin = durationMin
-        self.enforceHostBlocks = data["enforceHostBlocks"] as? Bool ?? false
-        self.hostBlocklistData = data["hostBlocklistData"] as? String
+        self.strictMode = data["strictMode"] as? Bool ?? false
 
         if let timestamp = data["startAt"] as? Timestamp {
             startAt = timestamp.dateValue()

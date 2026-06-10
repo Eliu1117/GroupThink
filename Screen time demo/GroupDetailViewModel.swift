@@ -6,6 +6,7 @@
 //
 
 import Combine
+import FirebaseFirestore
 import Foundation
 
 struct GroupMember: Identifiable, Equatable {
@@ -20,6 +21,56 @@ final class GroupDetailViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isDeleting = false
     @Published private(set) var errorMessage: String?
+    /// Live group doc — keeps settings/streaks fresh while this screen is open.
+    @Published private(set) var liveGroup: Group?
+    @Published private(set) var isUpdatingSettings = false
+
+    private var groupListener: ListenerRegistration?
+
+    deinit {
+        groupListener?.remove()
+    }
+
+    // MARK: - Live group + settings
+
+    func startObservingGroup(groupID: String) {
+        guard groupListener == nil else { return }
+
+        groupListener = GroupService.shared.observeGroup(groupID: groupID) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .success(let group):
+                    self.liveGroup = group
+                case .failure(let error):
+                    print("[Groups] Group listener error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func stopObservingGroup() {
+        groupListener?.remove()
+        groupListener = nil
+    }
+
+    /// Persists a single Bool setting (creator only — enforced in GroupService).
+    func updateSetting(groupID: String, requesterUID: String, key: String, value: Bool) async {
+        isUpdatingSettings = true
+        defer { isUpdatingSettings = false }
+
+        do {
+            try await GroupService.shared.updateGroupSetting(
+                groupID: groupID,
+                requesterUID: requesterUID,
+                key: key,
+                value: value
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[Groups] Setting update failed: \(error.localizedDescription)")
+        }
+    }
 
     func loadMembers(for group: Group, knownNames: [String: String] = [:]) async {
         isLoading = true

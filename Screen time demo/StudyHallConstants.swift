@@ -10,6 +10,8 @@ import Foundation
 enum StudyHallConstants {
     static let appGroupID = "group.com.davechengapps.screentimedemo"
     static let blocklistDefaultsKey = "studyHall.blocklistSelection"
+    /// Apps the user keeps available during strict-mode sessions.
+    static let whitelistDefaultsKey = "studyHall.whitelistSelection"
     static let studyHallActivityName = "studyHall"
     static let openedBlockedAppEventName = "openedBlockedApp"
 
