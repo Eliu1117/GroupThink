@@ -360,6 +360,16 @@ final class SessionViewModel: ObservableObject {
                 }
 
             case .active:
+                // Set a display value immediately so the UI never shows the default
+                // 0:00 state while prepareActiveSession awaits the async token refresh.
+                // Only set if currently zero — avoids resetting mid-session on presence updates.
+                if secondsRemaining == 0 {
+                    if let endDate = session.endDate {
+                        updateRemainingSeconds(until: endDate)
+                    } else {
+                        secondsRemaining = session.durationMin * 60
+                    }
+                }
                 Task {
                     await prepareActiveSession(session, statusChanged: statusChanged)
                 }
@@ -433,26 +443,48 @@ final class SessionViewModel: ObservableObject {
 
     /// Applies shields for the active session.
     /// Strict mode: blocks ALL apps except the user's local whitelist (no tokens cross devices).
-    /// Normal mode: blocks the user's personal blocklist selection.
+    /// Normal mode: blocks the user's personal blocklist, with the whitelist taking precedence.
     private func applyLocalBlocking(for session: StudySession) {
+        let whitelist = BlocklistStore.shared.whitelistSelection
+
         if session.strictMode {
-            BlockingManager.shared.blockStrict(whitelist: BlocklistStore.shared.whitelistSelection)
+            BlockingManager.shared.blockStrict(whitelist: whitelist)
             didApplyBlocking = true
             print("[Session] Applied STRICT shields (whitelist: \(BlocklistStore.shared.whitelistCount) app(s))")
         } else {
-            let personal = BlocklistStore.shared.selection
-            guard BlocklistStore.shared.hasSelection else {
-                print("[Session] No blocklist configured — skipping shield")
+            // Explicitly subtract whitelist tokens from the blocklist so that an app
+            // present in both collections is treated as allowed. Whitelist always wins.
+            let effective = effectiveBlockSelection(whitelist: whitelist)
+            guard !effective.applicationTokens.isEmpty || !effective.categoryTokens.isEmpty else {
+                print("[Session] Blocklist is empty or fully covered by whitelist — skipping shield")
                 return
             }
-            BlockingManager.shared.block(selection: personal)
+            BlockingManager.shared.block(selection: effective)
             didApplyBlocking = true
             print("[Session] Applied personal shields")
         }
 
         if let endDate = session.endDate {
-            scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
+            scheduleBackgroundMonitoring(until: endDate, selection: effectiveMonitorSelection(for: session))
         }
+    }
+
+    /// Returns the personal blocklist with whitelist tokens subtracted.
+    /// Used for both shield application and DeviceActivity event registration.
+    private func effectiveBlockSelection(whitelist: FamilyActivitySelection) -> FamilyActivitySelection {
+        var effective = BlocklistStore.shared.selection
+        effective.applicationTokens.subtract(whitelist.applicationTokens)
+        effective.categoryTokens.subtract(whitelist.categoryTokens)
+        return effective
+    }
+
+    /// Returns the selection to use when registering the openedBlockedApp DeviceActivity event.
+    /// Strict mode: empty — the shield extension handles detection; using the blocklist here
+    /// would fire warnings for whitelisted apps whose tokens also appear on the blocklist.
+    /// Normal mode: the blocklist minus the whitelist.
+    private func effectiveMonitorSelection(for session: StudySession) -> FamilyActivitySelection {
+        guard !session.strictMode else { return FamilyActivitySelection() }
+        return effectiveBlockSelection(whitelist: BlocklistStore.shared.whitelistSelection)
     }
 
     /// GRO-21: Detects participant UIDs not yet in `participantNames` and fetches
@@ -474,22 +506,30 @@ final class SessionViewModel: ObservableObject {
 
     /// Caches auth token and App Group context before DeviceActivity monitoring begins.
     private func prepareActiveSession(_ session: StudySession, statusChanged: Bool) async {
-        await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
+        // Start the countdown immediately — before any async work — so the loop begins
+        // ticking from the very first second without being blocked by the token refresh.
+        startCountdown(for: session)
+
         persistActiveSessionContext(for: session)
 
         if statusChanged || !didApplyBlocking {
             applyLocalBlocking(for: session)
         }
         if let endDate = session.endDate, scheduledEndDate != endDate {
-            scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
+            scheduleBackgroundMonitoring(until: endDate, selection: effectiveMonitorSelection(for: session))
             scheduledEndDate = endDate
         } else if statusChanged, session.endDate == nil {
             scheduleBackgroundMonitoring(
                 until: Date().addingTimeInterval(TimeInterval(session.durationMin * 60)),
-                selection: BlocklistStore.shared.selection
+                selection: effectiveMonitorSelection(for: session)
             )
         }
-        startCountdown(for: session)
+
+        // Token refresh is async; must complete before extensions make authenticated writes,
+        // but the countdown and shields do not depend on it.
+        if statusChanged {
+            await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
+        }
         await flushPendingOpenedEvents()
     }
 
@@ -503,6 +543,9 @@ final class SessionViewModel: ObservableObject {
                 userUID: currentUID
             )
         )
+        // Persist the strict-mode flag so StudyHallMonitor can apply the correct
+        // shield policy when intervalDidStart fires in the background.
+        SessionContextStore.shared.setStrictMode(strictMode)
     }
 
     private func scheduleBackgroundMonitoring(
@@ -517,14 +560,28 @@ final class SessionViewModel: ObservableObject {
     }
 
     private func startCountdown(for session: StudySession) {
-        countdownTask?.cancel()
-
         guard let endDate = session.endDate else {
+            // startAt not yet available (server timestamp still propagating).
+            // Show the full duration as a placeholder; the next Firestore snapshot
+            // with startAt set will call startCountdown again to launch the real loop.
             secondsRemaining = session.durationMin * 60
             return
         }
 
-        updateRemainingSeconds(until: endDate)
+        // Don't restart the loop if it's already running.
+        // The initial display value is set by handleSessionUpdate before this is called,
+        // so we don't call updateRemainingSeconds here. Calling it here while another
+        // concurrent prepareActiveSession task is in flight (e.g. Task A with a local
+        // server-timestamp estimate vs Task B with the confirmed server timestamp) would
+        // race and cause the displayed value to jump upward before settling.
+        if let existing = countdownTask, !existing.isCancelled {
+            return
+        }
+
+        // Capture endDate once so the loop's reference point never shifts when Firestore
+        // delivers the server-confirmed timestamp (which may differ by a few ms from the
+        // local estimate), preventing mid-session jumps in the displayed value.
+        let capturedEndDate = endDate
 
         countdownTask = Task {
             while !Task.isCancelled {
@@ -533,9 +590,8 @@ final class SessionViewModel: ObservableObject {
 
                 await MainActor.run {
                     guard let session = self.session, session.status == .active else { return }
-                    guard let endDate = session.endDate else { return }
 
-                    self.updateRemainingSeconds(until: endDate)
+                    self.updateRemainingSeconds(until: capturedEndDate)
 
                     if self.secondsRemaining <= 0 {
                         self.countdownTask?.cancel()

@@ -9,6 +9,8 @@ import UIKit
 struct GroupDetailView: View {
     let group: Group
     let currentUserUID: String?
+    /// When true the view auto-starts a new session on first appearance (used after group creation).
+    var autoStartSession: Bool = false
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @Environment(\.dismiss) private var dismiss
@@ -19,6 +21,7 @@ struct GroupDetailView: View {
 
     @State private var didCopyCode = false
     @State private var showDeleteConfirmation = false
+    @State private var didAutoStart = false
 
     /// Live group doc when available; falls back to the pushed snapshot.
     private var currentGroup: Group {
@@ -110,6 +113,12 @@ struct GroupDetailView: View {
             await viewModel.loadMembers(for: group, knownNames: knownNames)
 
             sessionViewModel.seedParticipantNames(viewModel.memberNames)
+
+            // Auto-start a session when navigating here directly from group creation.
+            if autoStartSession, !didAutoStart, canStartSession, sessionViewModel.session == nil {
+                didAutoStart = true
+                _ = await sessionViewModel.createSession()
+            }
         }
         .onAppear {
             sessionViewModel.configure(groupID: group.id, currentUID: currentUserUID)

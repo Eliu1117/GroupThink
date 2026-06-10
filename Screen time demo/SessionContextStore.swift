@@ -102,6 +102,13 @@ final class SessionContextStore {
         return events
     }
 
+    // MARK: - Strict mode flag (read by StudyHallMonitor extension)
+
+    func setStrictMode(_ isStrict: Bool) {
+        defaults?.set(isStrict, forKey: StudyHallConstants.strictModeKey)
+        defaults?.synchronize()
+    }
+
     func clearAll() {
         setActiveSession(nil)
         defaults?.removeObject(forKey: StudyHallConstants.pendingOpenedEventsKey)
@@ -109,6 +116,7 @@ final class SessionContextStore {
         defaults?.removeObject(forKey: StudyHallConstants.firebaseIdTokenExpiryKey)
         defaults?.removeObject(forKey: StudyHallConstants.lastOpenedReportKey)
         defaults?.removeObject(forKey: StudyHallConstants.lastOpenedReportAtKey)
+        defaults?.set(false, forKey: StudyHallConstants.strictModeKey)
         defaults?.synchronize()
     }
 

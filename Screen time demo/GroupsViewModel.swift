@@ -14,6 +14,8 @@ final class GroupsViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isSubmitting = false
     @Published var errorMessage: String?
+    /// Set after a successful creation so GroupsView can navigate directly to the new group.
+    @Published private(set) var pendingNavigationGroupID: String?
 
     private var listener: ListenerRegistration?
     private var userUID: String?
@@ -75,6 +77,7 @@ final class GroupsViewModel: ObservableObject {
 
         do {
             let groupID = try await GroupService.shared.createGroup(name: trimmed, creatorUID: userUID)
+            pendingNavigationGroupID = groupID
             print("[Groups] Created group \(groupID)")
             return true
         } catch {
@@ -107,5 +110,9 @@ final class GroupsViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    func clearPendingNavigation() {
+        pendingNavigationGroupID = nil
     }
 }

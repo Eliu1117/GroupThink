@@ -162,19 +162,28 @@ final class AuthViewModel: ObservableObject {
     }
 
     private func resolvedDisplayName(firebaseUser: User, appleFullName: PersonNameComponents?) -> String {
-        if let firebaseName = firebaseUser.displayName, !firebaseName.isEmpty {
+        // Reject email-like strings — Apple's "Hide My Email" produces relay addresses
+        // (e.g. abc123@privaterelay.appleid.com) that are unreadable as display names.
+        if let firebaseName = firebaseUser.displayName,
+           !firebaseName.isEmpty,
+           !Self.looksLikeEmail(firebaseName) {
             return firebaseName
         }
 
         if let appleFullName {
             let formatter = PersonNameComponentsFormatter()
             let formatted = formatter.string(from: appleFullName)
-            if !formatted.isEmpty {
+            if !formatted.isEmpty, !Self.looksLikeEmail(formatted) {
                 return formatted
             }
         }
 
         return "User"
+    }
+
+    /// Returns true for strings that appear to be email addresses or Apple relay addresses.
+    private static func looksLikeEmail(_ string: String) -> Bool {
+        string.contains("@")
     }
 
     // MARK: - Nonce helpers (Firebase-recommended pattern)

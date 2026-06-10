@@ -18,12 +18,24 @@ final class UserService {
     /// Placeholder names written before Apple/Firebase provided a real display name.
     private static let placeholderNames: Set<String> = ["", "User", "Member", "Studier"]
 
+    /// Returns true if the string looks like an email (e.g. Apple's Hide My Email relay addresses).
+    private static func looksLikeEmail(_ string: String) -> Bool {
+        string.contains("@")
+    }
+
+    /// A stored name is replaceable if it is a known placeholder or an email-like string.
+    private static func isReplaceable(_ name: String) -> Bool {
+        placeholderNames.contains(name) || looksLikeEmail(name)
+    }
+
     // MARK: - Display name
 
-    /// Writes `displayName` to Firestore when the stored value is missing or a placeholder.
+    /// Writes `displayName` to Firestore when the stored value is missing, a placeholder,
+    /// or an email-like string (e.g. Apple's Hide My Email relay address).
     func syncDisplayName(uid: String, displayName: String) async {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !Self.placeholderNames.contains(trimmed) else { return }
+        // Don't store garbage — reject placeholders and email-like strings as the new value.
+        guard !Self.placeholderNames.contains(trimmed), !Self.looksLikeEmail(trimmed) else { return }
 
         let ref = db.collection("users").document(uid)
 
@@ -31,7 +43,7 @@ final class UserService {
             let snapshot = try await ref.getDocument()
             if snapshot.exists {
                 let stored = snapshot.data()?["displayName"] as? String ?? ""
-                guard Self.placeholderNames.contains(stored) else { return }
+                guard Self.isReplaceable(stored) else { return }
                 try await ref.updateData(["displayName": trimmed])
                 print("[UserService] Updated displayName for \(uid) → \(trimmed)")
             } else {
@@ -66,7 +78,7 @@ final class UserService {
             }
 
             for await (uid, name) in group {
-                if let name, !Self.placeholderNames.contains(name) {
+                if let name, !Self.isReplaceable(name) {
                     names[uid] = name
                 }
             }

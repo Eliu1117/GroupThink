@@ -36,6 +36,10 @@ enum StudyHallConstants {
     static let lastOpenedReportKey = "studyHall.lastOpenedReport"
     static let lastOpenedReportAtKey = "studyHall.lastOpenedReportAt"
 
+    /// Whether the current session is running in strict mode.
+    /// Read by StudyHallMonitor to apply the right shield policy when intervalDidStart fires.
+    static let strictModeKey = "studyHall.strictMode"
+
     static let backgroundURLSessionIdentifiers = [
         backgroundURLSessionIdentifier,
         shieldBackgroundURLSessionIdentifier,

@@ -66,6 +66,10 @@ final class StatsService {
         let ref = db.collection("users").document(userUID)
 
         // Blind atomic increments — write without reading.
+        // IMPORTANT: use updateData, not setData(merge: true), for dot-notation keys.
+        // setData treats "stats.focusMinutes" as a literal top-level field name rather
+        // than the nested stats > focusMinutes path, so the increment would land in a
+        // phantom field and the profile listener would never see the change.
         var increments: [String: Any] = [:]
         if durationMinutes > 0 {
             increments["stats.focusMinutes"] = FieldValue.increment(Int64(durationMinutes))
@@ -74,7 +78,7 @@ final class StatsService {
             increments["stats.totalViolations"] = FieldValue.increment(Int64(1))
         }
         if !increments.isEmpty {
-            try await ref.setData(increments, merge: true)
+            try await ref.updateData(increments)
         }
 
         // Streak advance requires knowing last session's date — transaction read is necessary.
@@ -105,10 +109,15 @@ final class StatsService {
                 todayStr: todayStr
             )
 
-            transaction.setData(
-                ["stats": ["currentStreak": newStreak, "lastSessionDateStr": todayStr]],
-                forDocument: ref,
-                merge: true
+            // Use updateData with dot-notation so only these two fields are touched.
+            // setData(["stats": {...}], merge: true) replaces the entire stats map,
+            // erasing focusMinutes and totalViolations that were just incremented.
+            transaction.updateData(
+                [
+                    "stats.currentStreak": newStreak,
+                    "stats.lastSessionDateStr": todayStr,
+                ],
+                forDocument: ref
             )
             return nil
         }

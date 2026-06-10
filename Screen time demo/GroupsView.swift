@@ -8,15 +8,22 @@
 import FirebaseAuth
 import SwiftUI
 
+/// Typed navigation destination that carries whether the group should auto-start a session.
+struct GroupNavigation: Hashable {
+    let group: Group
+    let autoStart: Bool
+}
+
 struct GroupsView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var viewModel = GroupsViewModel()
 
     @State private var showCreateGroup = false
     @State private var showJoinGroup = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             SwiftUI.Group {
                 if viewModel.isLoading && viewModel.groups.isEmpty {
                     loadingView
@@ -61,6 +68,15 @@ struct GroupsView: View {
             .onChange(of: authViewModel.user?.uid) { _, userUID in
                 viewModel.startListening(userUID: userUID)
             }
+            // When a group is freshly created, navigate to it with auto-start enabled
+            // as soon as the Firestore listener delivers it to the list.
+            .onChange(of: viewModel.groups) { _, groups in
+                guard let pendingID = viewModel.pendingNavigationGroupID,
+                      let group = groups.first(where: { $0.id == pendingID })
+                else { return }
+                navigationPath.append(GroupNavigation(group: group, autoStart: true))
+                viewModel.clearPendingNavigation()
+            }
         }
     }
 
@@ -68,7 +84,7 @@ struct GroupsView: View {
 
     private var groupsList: some View {
         List(viewModel.groups) { group in
-            NavigationLink(value: group) {
+            NavigationLink(value: GroupNavigation(group: group, autoStart: false)) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(group.name)
                         .font(.headline)
@@ -80,8 +96,12 @@ struct GroupsView: View {
                 .padding(.vertical, 2)
             }
         }
-        .navigationDestination(for: Group.self) { group in
-            GroupDetailView(group: group, currentUserUID: authViewModel.user?.uid)
+        .navigationDestination(for: GroupNavigation.self) { nav in
+            GroupDetailView(
+                group: nav.group,
+                currentUserUID: authViewModel.user?.uid,
+                autoStartSession: nav.autoStart
+            )
         }
         .overlay(alignment: .bottom) {
             if let errorMessage = viewModel.errorMessage {
