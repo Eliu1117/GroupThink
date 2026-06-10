@@ -15,6 +15,10 @@ struct Group: Identifiable, Equatable, Hashable {
     let inviteCode: String
     let createdBy: String
     let memberUids: [String]
+    /// Consecutive days on which every member completed a session (Phase 5).
+    let currentGroupStreak: Int
+    /// Calendar day the group streak was last counted.
+    let lastGroupStreakUpdate: Date?
 
     init?(
         id: String,
@@ -36,6 +40,8 @@ struct Group: Identifiable, Equatable, Hashable {
         self.inviteCode = inviteCode
         self.createdBy = createdBy
         self.memberUids = memberUids
+        self.currentGroupStreak = data["currentGroupStreak"] as? Int ?? 0
+        self.lastGroupStreakUpdate = (data["lastGroupStreakUpdate"] as? Timestamp)?.dateValue()
     }
 
     init(
@@ -43,13 +49,17 @@ struct Group: Identifiable, Equatable, Hashable {
         name: String,
         inviteCode: String,
         createdBy: String,
-        memberUids: [String]
+        memberUids: [String],
+        currentGroupStreak: Int = 0,
+        lastGroupStreakUpdate: Date? = nil
     ) {
         self.id = id
         self.name = name
         self.inviteCode = inviteCode
         self.createdBy = createdBy
         self.memberUids = memberUids
+        self.currentGroupStreak = currentGroupStreak
+        self.lastGroupStreakUpdate = lastGroupStreakUpdate
     }
 
     /// Generates a short, human-friendly invite code (ambiguous characters omitted).

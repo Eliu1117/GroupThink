@@ -11,6 +11,8 @@ struct UserProfile: Equatable {
     let photoURL: URL?
     let focusMinutes: Int
     let currentStreak: Int
+    /// Last calendar day the user completed a session as `"focused"` (Phase 5 streaks).
+    let lastSessionDate: Date?
 
     init?(document: DocumentSnapshot) {
         guard document.exists, let data = document.data() else { return nil }
@@ -26,5 +28,6 @@ struct UserProfile: Equatable {
         let stats = data["stats"] as? [String: Any]
         focusMinutes = stats?["focusMinutes"] as? Int ?? 0
         currentStreak = stats?["currentStreak"] as? Int ?? 0
+        lastSessionDate = (stats?["lastSessionDate"] as? Timestamp)?.dateValue()
     }
 }

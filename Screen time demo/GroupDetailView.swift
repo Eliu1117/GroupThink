@@ -38,6 +38,7 @@ struct GroupDetailView: View {
                 sessionActionsSection
             }
 
+            leaderboardSection
             inviteCodeSection
             membersSection
 
@@ -115,6 +116,22 @@ struct GroupDetailView: View {
             .disabled(sessionViewModel.isSubmitting || currentUserUID == nil)
         } footer: {
             Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
+        }
+    }
+
+    // MARK: - Leaderboard (Phase 5)
+
+    private var leaderboardSection: some View {
+        Section {
+            NavigationLink {
+                GroupLeaderboardView(
+                    group: group,
+                    currentUserUID: currentUserUID,
+                    memberNames: viewModel.memberNames
+                )
+            } label: {
+                Label("Leaderboard", systemImage: "trophy.fill")
+            }
         }
     }
 

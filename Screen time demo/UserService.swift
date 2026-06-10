@@ -73,6 +73,32 @@ final class UserService {
         return names
     }
 
+    // MARK: - Profiles (Phase 5 leaderboard)
+
+    /// Fetches full user profiles (name, stats) via direct document reads.
+    func fetchProfiles(for uids: [String]) async -> [String: UserProfile] {
+        guard !uids.isEmpty else { return [:] }
+
+        var profiles: [String: UserProfile] = [:]
+
+        await withTaskGroup(of: (String, UserProfile?).self) { group in
+            for uid in uids {
+                group.addTask {
+                    let snapshot = try? await self.db.collection("users").document(uid).getDocument()
+                    return (uid, snapshot.flatMap { UserProfile(document: $0) })
+                }
+            }
+
+            for await (uid, profile) in group {
+                if let profile {
+                    profiles[uid] = profile
+                }
+            }
+        }
+
+        return profiles
+    }
+
     private func fetchDisplayName(uid: String) async throws -> String? {
         let snapshot = try await db.collection("users").document(uid).getDocument()
         guard snapshot.exists, let data = snapshot.data() else { return nil }

@@ -239,6 +239,7 @@ final class SessionViewModel: ObservableObject {
                 sessionID: sessionID,
                 requesterUID: currentUID
             )
+            awardStats(for: activeSession)
             detachSessionListener()
             self.session = nil
             participants = []
@@ -304,10 +305,41 @@ final class SessionViewModel: ObservableObject {
                 }
 
             case .ended:
+                awardStats(for: session)
                 finalizeSessionTeardown(clearSessionDocument: true)
             }
         } else {
+            // The live-session query drops the doc once it ends, so the listener
+            // reports nil. Award from the last known active snapshot.
+            if previousStatus == .active, let lastSession = self.session {
+                awardStats(for: lastSession)
+            }
             finalizeSessionTeardown(clearSessionDocument: true)
+        }
+    }
+
+    /// Phase 5 — awards focus minutes and streaks for the LOCAL user if they
+    /// stayed focused. Idempotent per session (guarded inside StatsService).
+    private func awardStats(for session: StudySession) {
+        guard let groupID, let currentUID else { return }
+        guard session.participants[currentUID] == .focused else {
+            print("[Stats] No award — local user did not stay focused")
+            return
+        }
+        guard let startAt = session.startAt else { return }
+
+        let elapsedMinutes = Int((Date().timeIntervalSince(startAt) / 60).rounded())
+        let minutes = min(session.durationMin, max(elapsedMinutes, 0))
+        guard minutes > 0 else { return }
+
+        let sessionID = session.id
+        Task {
+            await StatsService.shared.recordSessionCompletion(
+                groupID: groupID,
+                sessionID: sessionID,
+                userUID: currentUID,
+                focusMinutes: minutes
+            )
         }
     }
 
@@ -398,6 +430,9 @@ final class SessionViewModel: ObservableObject {
                             if self.isHost {
                                 _ = await self.endSession()
                             } else {
+                                if let session = self.session {
+                                    self.awardStats(for: session)
+                                }
                                 self.haltLocalSessionInfrastructure(reason: "timer expired (participant)")
                             }
                         }
