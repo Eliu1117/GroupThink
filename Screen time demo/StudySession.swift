@@ -18,12 +18,14 @@ enum ParticipantState: String, Equatable, CaseIterable {
     case focused
     case `break`
     case left
+    case opened
 
     var label: String {
         switch self {
         case .focused: return "Focused"
         case .break: return "On Break"
-        case .left: return "Left"
+        case .left: return "Left Early"
+        case .opened: return "Opened App"
         }
     }
 
@@ -32,8 +34,12 @@ enum ParticipantState: String, Equatable, CaseIterable {
         case .focused: return "checkmark.circle.fill"
         case .break: return "cup.and.saucer.fill"
         case .left: return "figure.walk.departure"
+        case .opened: return "exclamationmark.triangle.fill"
         }
     }
+
+    /// Phase 4 presence states written by the app and extension.
+    static let presenceStates: [ParticipantState] = [.focused, .left, .opened]
 }
 
 struct SessionParticipant: Identifiable, Equatable {

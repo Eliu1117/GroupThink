@@ -169,7 +169,8 @@ struct SessionView: View {
         switch state {
         case .focused: return .green
         case .break: return .orange
-        case .left: return .secondary
+        case .left: return .yellow
+        case .opened: return .red
         }
     }
 }

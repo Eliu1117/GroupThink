@@ -12,6 +12,7 @@ struct GroupDetailView: View {
 
     @EnvironmentObject private var authViewModel: AuthViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var viewModel = GroupDetailViewModel()
     @StateObject private var sessionViewModel = SessionViewModel()
@@ -94,6 +95,9 @@ struct GroupDetailView: View {
         }
         .onDisappear {
             sessionViewModel.stopListening()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            sessionViewModel.handleScenePhase(newPhase)
         }
     }
 

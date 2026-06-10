@@ -8,10 +8,12 @@
 import Combine
 import FirebaseFirestore
 import Foundation
+import SwiftUI
 
 @MainActor
 final class SessionViewModel: ObservableObject {
     @Published private(set) var session: StudySession?
+    @Published private(set) var participants: [SessionParticipant] = []
     @Published private(set) var secondsRemaining: Int = 0
     @Published private(set) var isSubmitting = false
     @Published private(set) var errorMessage: String?
@@ -36,6 +38,7 @@ final class SessionViewModel: ObservableObject {
         self.groupID = groupID
         self.currentUID = currentUID
         session = nil
+        participants = []
         errorMessage = nil
         secondsRemaining = 0
         didApplyBlocking = false
@@ -144,10 +147,16 @@ final class SessionViewModel: ObservableObject {
     }
 
     func updateMyState(_ state: ParticipantState) async {
+        await updatePresence(state)
+    }
+
+    /// Writes the local user's presence to `participants.{uid}.state` on the active session.
+    func updatePresence(_ state: ParticipantState) async {
         guard let groupID, let currentUID, let session, session.status == .active else { return }
+        guard session.participants[currentUID] != nil else { return }
 
         do {
-            try await SessionService.shared.updateParticipantState(
+            try await SessionService.shared.updatePresence(
                 groupID: groupID,
                 sessionID: session.id,
                 userUID: currentUID,
@@ -155,7 +164,28 @@ final class SessionViewModel: ObservableObject {
             )
         } catch {
             errorMessage = error.localizedDescription
-            print("[Firestore Session] Error updating user state: \(error.localizedDescription)")
+            print("[Firestore Presence] Error updating user state: \(error.localizedDescription)")
+        }
+    }
+
+    /// Responds to app lifecycle changes during an active session.
+    func handleScenePhase(_ phase: ScenePhase) {
+        guard let session, session.status == .active, isInLobby else { return }
+
+        switch phase {
+        case .background:
+            print("[Firestore Presence] App entered background — marking left")
+            Task { await updatePresence(.left) }
+
+        case .active:
+            print("[Firestore Presence] App became active — marking focused")
+            Task { await updatePresence(.focused) }
+
+        case .inactive:
+            break
+
+        @unknown default:
+            break
         }
     }
 
@@ -211,6 +241,7 @@ final class SessionViewModel: ObservableObject {
             let statusChanged = previousStatus != session.status
             previousStatus = session.status
             self.session = session
+            participants = session.participantList
 
             switch session.status {
             case .lobby:
@@ -237,6 +268,7 @@ final class SessionViewModel: ObservableObject {
             }
         } else {
             self.session = nil
+            participants = []
             previousStatus = nil
             clearLocalSessionState()
         }

@@ -290,13 +290,27 @@ This requires Apple approval and can take time — submit early.
 
 ---
 
+### Firestore Schema Updates for Phase 4
+* **Path:** `/sessions/{sessionId}`
+* **Field:** `participants` (Map)
+    * Key: `userId` (String)
+    * Value: `Object` containing:
+        * `name`: String
+        * `status`: String (`"focused"` | `"left"` | `"opened"`)
+        * `lastUpdated`: Timestamp
+
+### Device Activity & Shield Callbacks
+* **App Backgrounding (Detect "Left Early"):** Use SwiftUI's `scenePhase` tracking in the main application to catch `.background` transitions and update the user's Firestore status to `"left"`.
+* **Shield Bystander (Detect "Opened Blocked App"):** The `DeviceActivityMonitor` extension (`StudyHallMonitor`) must override `intervalDidReachThreshold`. When triggered, it should perform a direct Firestore write or invoke a lightweight background network task to set the member's status to `"opened"`.
+
 ## Where things stand right now
+* **Completed:** Phase 0, 1, 2, and 3. Screen Time shielding, Firebase Auth, Group creation/deletion, and Session synchronization (`SessionService`, `GroupService`) are fully implemented and verified on physical devices.
+* **Current Target:** Phase 4 (Social Presence).
+* **Shared Infrastructure:** Use the existing App Group identifier (`group.com.davechengapps.screentimedemo`) to share Firestore session state or configurations between the main app targets and the `StudyHallMonitor` device activity extension.
 
-The project has successfully completed **Phase 0** and **Phase 1**. Screen Time shielding functionality has been validated on a physical device, and Firebase Auth (Sign-in with Apple) alongside user profile initialization in Firestore has been fully implemented and verified.
-
-The immediate next task is building out **Phase 2 (Groups)** and the newly integrated Phase 3 catch-up task:
-1. **Implement Phase 3 — Step 0:** Add the 2-step destructive confirmation flow for deleting a group, ensuring deletion logic restricts access to the group creator (`createdBy == currentUid`).
-2. **Build Phase 2 UI & Service Layer:** Implement the core views (`CreateGroupView`, `JoinGroupView`, `GroupsView`, `GroupDetailView`) and hook them up to `GroupService.swift` to handle Firestore document creation, invite code queries, and membership array updates (`memberUids`).
-3. **Verify Listeners:** Ensure real-time Firestore synchronization correctly populates the groups list where `memberUids` contains the authenticated user's ID.
-
-**Tooling Rule:** Leverage the `xcodebuildmcp` server to verify target builds and catch framework linkage issues early as group service components are wired together.
+### Phase 4 UI Requirements
+* **Leaderboard Row component:** Displays participant name and an status indicator dot.
+* **Color Mapping:**
+    * `"focused"` -> `.green`
+    * `"left"` -> `.yellow`
+    * `"opened"` -> `.red`

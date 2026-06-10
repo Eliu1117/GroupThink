@@ -36,7 +36,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 2 — Groups
+## Phase 2 — Groups **{DONE}**
 
 ### Step 1 — Create a Group
 - `CreateGroupView`: name input → writes `groups/{groupId}` doc, generates a random `inviteCode`, sets `createdBy` and `memberUids: [currentUid]`
@@ -53,7 +53,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 3 — Sessions Core *(current priority)*
+## Phase 3 — Sessions Core **{DONE}**
 
 ### Step 0 — Delete a Group (2-Step Verification)
 - **Context:** Catching up on a missing Phase 2 feature before moving into active sessions. Only the group creator (`createdBy == currentUid`) should have deletion privileges.
@@ -88,7 +88,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 4 — Social Presence
+## Phase 4 — Social Presence *(current priority)*
 
 ### Step 1 — Per-Member Live State
 - Firestore listener in `SessionView` on the `participants` map

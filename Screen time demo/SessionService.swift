@@ -146,6 +146,77 @@ final class SessionService {
         print("[Firestore Session] Updated \(userUID) state to \(state.rawValue)")
     }
 
+    // MARK: - Presence (Phase 4)
+
+    /// Real-time listener on a specific session document's `participants` map.
+    func observeSessionParticipants(
+        groupID: String,
+        sessionID: String,
+        onChange: @escaping (Result<[String: ParticipantState], Error>) -> Void
+    ) -> ListenerRegistration {
+        sessions(for: groupID)
+            .document(sessionID)
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    onChange(.failure(error))
+                    return
+                }
+
+                guard let snapshot, snapshot.exists else {
+                    onChange(.success([:]))
+                    return
+                }
+
+                onChange(.success(Self.parseParticipants(from: snapshot)))
+            }
+    }
+
+    /// Writes the authenticated user's presence state to `participants.{uid}.state`.
+    func updatePresence(
+        groupID: String,
+        sessionID: String,
+        userUID: String,
+        state: ParticipantState
+    ) async throws {
+        try await updateParticipantState(
+            groupID: groupID,
+            sessionID: sessionID,
+            userUID: userUID,
+            state: state
+        )
+        print("[Firestore Presence] Updated \(userUID) → \(state.rawValue)")
+    }
+
+    func markFocused(groupID: String, sessionID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .focused)
+    }
+
+    func markLeft(groupID: String, sessionID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .left)
+    }
+
+    func markOpened(groupID: String, sessionID: String, userUID: String) async throws {
+        try await updatePresence(groupID: groupID, sessionID: sessionID, userUID: userUID, state: .opened)
+    }
+
+    static func parseParticipants(from document: DocumentSnapshot) -> [String: ParticipantState] {
+        guard let data = document.data(),
+              let participantsMap = data["participants"] as? [String: Any]
+        else {
+            return [:]
+        }
+
+        var parsed: [String: ParticipantState] = [:]
+        for (uid, value) in participantsMap {
+            if let participantData = value as? [String: Any],
+               let stateRaw = participantData["state"] as? String,
+               let state = ParticipantState(rawValue: stateRaw) {
+                parsed[uid] = state
+            }
+        }
+        return parsed
+    }
+
     // MARK: - End
 
     func endSession(groupID: String, sessionID: String, requesterUID: String) async throws {
