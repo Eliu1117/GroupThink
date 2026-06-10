@@ -172,6 +172,7 @@ final class SessionViewModel: ObservableObject {
 
         case .active:
             Task {
+                await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: false)
                 let flushedOpened = await flushPendingOpenedEvents()
                 if !flushedOpened, myState == .left {
                     print("[Firestore Presence] App became active — restoring focused")
@@ -298,19 +299,9 @@ final class SessionViewModel: ObservableObject {
                 }
 
             case .active:
-                // Persist App Group context before scheduling background DeviceActivity monitoring.
-                persistActiveSessionContext(for: session)
-                if statusChanged || !didApplyBlocking {
-                    applyLocalBlocking(for: session)
+                Task {
+                    await prepareActiveSession(session, statusChanged: statusChanged)
                 }
-                if let endDate = session.endDate, scheduledEndDate != endDate {
-                    scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
-                    scheduledEndDate = endDate
-                } else if statusChanged, session.endDate == nil {
-                    scheduleBackgroundMonitoring(until: Date().addingTimeInterval(TimeInterval(session.durationMin * 60)), selection: BlocklistStore.shared.selection)
-                }
-                startCountdown(for: session)
-                Task { await flushPendingOpenedEvents() }
 
             case .ended:
                 finalizeSessionTeardown(clearSessionDocument: true)
@@ -336,10 +327,30 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
+    /// Caches auth token and App Group context before DeviceActivity monitoring begins.
+    private func prepareActiveSession(_ session: StudySession, statusChanged: Bool) async {
+        await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
+        persistActiveSessionContext(for: session)
+
+        if statusChanged || !didApplyBlocking {
+            applyLocalBlocking(for: session)
+        }
+        if let endDate = session.endDate, scheduledEndDate != endDate {
+            scheduleBackgroundMonitoring(until: endDate, selection: BlocklistStore.shared.selection)
+            scheduledEndDate = endDate
+        } else if statusChanged, session.endDate == nil {
+            scheduleBackgroundMonitoring(
+                until: Date().addingTimeInterval(TimeInterval(session.durationMin * 60)),
+                selection: BlocklistStore.shared.selection
+            )
+        }
+        startCountdown(for: session)
+        await flushPendingOpenedEvents()
+    }
+
     private func persistActiveSessionContext(for session: StudySession) {
         guard let groupID, let currentUID, session.participants[currentUID] != nil else { return }
 
-        // Write session metadata to the App Group before DeviceActivity monitoring begins.
         SessionContextStore.shared.setActiveSession(
             ActiveSessionContext(
                 groupID: groupID,

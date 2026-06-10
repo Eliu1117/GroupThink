@@ -21,4 +21,8 @@ enum StudyHallConstants {
     static let currentGroupIdKey = "currentGroupId"
     static let currentSessionIdKey = "currentSessionId"
     static let currentUserIdKey = "currentUserId"
+
+    /// Firebase Auth ID token cached by the main app for extension REST writes.
+    static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
+    static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
 }

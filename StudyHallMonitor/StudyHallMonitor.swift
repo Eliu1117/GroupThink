@@ -41,8 +41,18 @@ class StudyHallMonitor: DeviceActivityMonitor {
             return
         }
 
-        // Blocks until Firestore write completes or times out — keeps the ephemeral extension thread alive.
-        ExtensionSessionBridge.handleBlockedAppOpened()
+        guard let context = ExtensionSessionContext.load() else {
+            print("[DeviceActivity Monitor] No session context in App Group — queueing fallback")
+            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            return
+        }
+
+        print(
+            "[DeviceActivity Monitor] openedBlockedApp threshold — session \(context.sessionID), user \(context.userUID)"
+        )
+
+        // Synchronous Firestore REST PATCH; semaphore inside keeps the extension thread alive.
+        ExtensionFirebaseWriter.markOpenedFromBackground(context: context)
         print("[DeviceActivity Monitor] openedBlockedApp threshold handled")
     }
 

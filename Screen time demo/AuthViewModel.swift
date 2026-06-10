@@ -68,9 +68,11 @@ final class AuthViewModel: ObservableObject {
                 if let user {
                     print("[Auth] Auth state changed — signed in as \(user.uid)")
                     FirebaseAuthConfigurator.configureSharedKeychainAccess()
+                    await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
                     await self.syncProfileToFirestore()
                 } else {
                     print("[Auth] Auth state changed — signed out")
+                    ExtensionAuthTokenBridge.clearStoredToken()
                 }
             }
         }
@@ -141,6 +143,7 @@ final class AuthViewModel: ObservableObject {
             let authResult = try await Auth.auth().signIn(with: credential)
             print("[Auth] Firebase sign-in succeeded — uid: \(authResult.user.uid)")
             FirebaseAuthConfigurator.configureSharedKeychainAccess()
+            await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
             try await upsertUserDocument(
                 for: authResult.user,
                 fullName: appleCredential.fullName

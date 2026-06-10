@@ -105,6 +105,8 @@ final class SessionContextStore {
     func clearAll() {
         setActiveSession(nil)
         defaults?.removeObject(forKey: StudyHallConstants.pendingOpenedEventsKey)
+        defaults?.removeObject(forKey: StudyHallConstants.firebaseIdTokenKey)
+        defaults?.removeObject(forKey: StudyHallConstants.firebaseIdTokenExpiryKey)
         defaults?.synchronize()
     }
 

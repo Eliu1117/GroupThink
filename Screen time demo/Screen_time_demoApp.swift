@@ -18,6 +18,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         FirebaseApp.configure()
         FirebaseAuthConfigurator.configureSharedKeychainAccess()
+        Task {
+            await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: false)
+        }
         Task { @MainActor in
             PushNotificationService.shared.configureDelegates()
         }

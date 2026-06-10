@@ -2,108 +2,177 @@
 //  ExtensionFirebaseWriter.swift
 //  StudyHallMonitor
 //
-//  Initializes Firebase inside the extension and writes opened presence directly to Firestore.
+//  Plan A: synchronous Firestore REST PATCH — no Firestore SDK handshake in the extension.
+//
+//  Plan B fallback (not compiled): if security rules block REST or tokens cannot be cached,
+//  re-link FirebaseFirestore in the extension target and call `ExtensionFirestoreSDKFallback`
+//  after warming the client with `Firestore.firestore().disableNetwork()` / `enableNetwork()`
+//  plus `waitForPendingWrites()` before `updateData`, blocking with a DispatchSemaphore.
 //
 
-import FirebaseAuth
-import FirebaseCore
-import FirebaseFirestore
 import Foundation
 
-private enum ExtensionKeys {
-    static let appGroupID = "group.com.davechengapps.screentimedemo"
-    static let currentGroupIdKey = "currentGroupId"
-    static let currentSessionIdKey = "currentSessionId"
-    static let currentUserIdKey = "currentUserId"
-}
-
 enum ExtensionFirebaseWriter {
-    private static let configureLock = NSLock()
-    private static var isConfigured = false
+    private enum Keys {
+        static let appGroupID = "group.com.davechengapps.screentimedemo"
+        static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
+        static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
+        static let projectIDPlistKey = "PROJECT_ID"
+    }
 
-    /// Marks the current user as `opened` on the active session document.
-    /// Blocks the extension thread until the write completes or times out so iOS does not suspend the process mid-flight.
-    static func markOpenedFromBackground() {
-        guard let context = loadSessionContext() else {
-            print("[Extension Firebase] Missing session context — cannot write opened state")
+    private static let requestTimeout: TimeInterval = 5.0
+    private static let tokenExpiryBuffer: TimeInterval = 60
+
+    /// Marks the current user as `opened` via Firestore REST. Blocks until HTTP completes or times out.
+    static func markOpenedFromBackground(context: ExtensionSessionContext? = ExtensionSessionContext.load()) {
+        guard let context else {
+            print("[Extension REST] Missing session context — cannot write opened state")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
-        configureFirebaseIfNeeded()
-
-        guard Auth.auth().currentUser != nil else {
-            print("[Extension Firebase] No authenticated user in extension — queueing fallback")
+        guard let projectID = loadProjectID() else {
+            print("[Extension REST] Missing Firebase project ID — queueing fallback")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
-        let document = Firestore.firestore()
-            .collection("groups").document(context.groupID)
-            .collection("sessions").document(context.sessionID)
+        guard let idToken = loadCachedIDToken() else {
+            print("[Extension REST] No valid cached ID token — queueing fallback")
+            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            return
+        }
+
+        let success = patchOpenedState(
+            projectID: projectID,
+            context: context,
+            idToken: idToken
+        )
+
+        if success {
+            print("[Extension REST] SUCCESS: Background status set to opened for \(context.userUID)")
+        } else {
+            print("[Extension REST] Background update failed — queueing fallback")
+            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+        }
+    }
+
+    // MARK: - Firestore REST
+
+    private static func patchOpenedState(
+        projectID: String,
+        context: ExtensionSessionContext,
+        idToken: String
+    ) -> Bool {
+        let fieldPath = "participants.\(context.userUID).state"
+        guard
+            let encodedMask = fieldPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+            let body = buildPatchBody(userUID: context.userUID),
+            let url = URL(string:
+                "https://firestore.googleapis.com/v1/projects/\(projectID)/databases/(default)/documents/groups/\(context.groupID)/sessions/\(context.sessionID)?updateMask.fieldPaths=\(encodedMask)"
+            )
+        else {
+            print("[Extension REST] Failed to build PATCH request")
+            return false
+        }
+
+        var request = URLRequest(url: url, timeoutInterval: requestTimeout)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
 
         let semaphore = DispatchSemaphore(value: 0)
-        var writeError: Error?
+        var succeeded = false
 
-        document.updateData([
-            "participants.\(context.userUID).state": "opened",
-        ]) { error in
-            writeError = error
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { semaphore.signal() }
+
             if let error {
-                print("[Extension Firebase] ERROR: Background update failed: \(error.localizedDescription)")
-            } else {
-                print("[Extension Firebase] SUCCESS: Background status set to opened for \(context.userUID)")
+                print("[Extension REST] ERROR: \(error.localizedDescription)")
+                return
             }
-            semaphore.signal()
+
+            guard let http = response as? HTTPURLResponse else {
+                print("[Extension REST] ERROR: Missing HTTP response")
+                return
+            }
+
+            if http.statusCode == 200 {
+                succeeded = true
+                return
+            }
+
+            let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            print("[Extension REST] ERROR: HTTP \(http.statusCode) — \(responseBody)")
         }
 
-        let waitResult = semaphore.wait(timeout: .now() + 5.0)
+        task.resume()
+
+        let waitResult = semaphore.wait(timeout: .now() + requestTimeout)
         if waitResult == .timedOut {
-            print("[Extension Firebase] Firestore write timed out after 5s — queueing fallback")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
-        } else if writeError != nil {
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
+            print("[Extension REST] ERROR: Request timed out after \(requestTimeout)s")
+            task.cancel()
+            return false
         }
+
+        return succeeded
     }
 
-    // MARK: - Firebase bootstrap
+    private static func buildPatchBody(userUID: String) -> Data? {
+        let body: [String: Any] = [
+            "fields": [
+                "participants": [
+                    "mapValue": [
+                        "fields": [
+                            userUID: [
+                                "mapValue": [
+                                    "fields": [
+                                        "state": ["stringValue": "opened"],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
 
-    private static func configureFirebaseIfNeeded() {
-        configureLock.lock()
-        defer { configureLock.unlock() }
-
-        guard !isConfigured else { return }
-
-        if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
-        }
-
-        do {
-            let prefix = Bundle.main.object(forInfoDictionaryKey: "AppIdentifierPrefix") as? String ?? ""
-            try Auth.auth().useUserAccessGroup("\(prefix)\(ExtensionKeys.appGroupID)")
-        } catch {
-            print("[Extension Firebase] Auth keychain group setup failed: \(error.localizedDescription)")
-        }
-
-        let settings = FirestoreSettings()
-        settings.cacheSettings = MemoryCacheSettings()
-        Firestore.firestore().settings = settings
-
-        isConfigured = true
-        print("[Extension Firebase] Firebase configured in extension")
+        return try? JSONSerialization.data(withJSONObject: body)
     }
 
-    private static func loadSessionContext() -> (groupID: String, sessionID: String, userUID: String)? {
-        guard let defaults = UserDefaults(suiteName: ExtensionKeys.appGroupID) else { return nil }
+    // MARK: - App Group / plist reads
 
+    private static func loadCachedIDToken() -> String? {
         guard
-            let groupID = defaults.string(forKey: ExtensionKeys.currentGroupIdKey),
-            let sessionID = defaults.string(forKey: ExtensionKeys.currentSessionIdKey),
-            let userUID = defaults.string(forKey: ExtensionKeys.currentUserIdKey)
+            let defaults = UserDefaults(suiteName: Keys.appGroupID),
+            let token = defaults.string(forKey: Keys.firebaseIdTokenKey),
+            !token.isEmpty
         else {
             return nil
         }
 
-        return (groupID, sessionID, userUID)
+        let expiry = defaults.double(forKey: Keys.firebaseIdTokenExpiryKey)
+        if expiry > 0 {
+            let secondsRemaining = expiry - Date().timeIntervalSince1970
+            if secondsRemaining <= tokenExpiryBuffer {
+                print("[Extension REST] Cached ID token expired or near expiry (\(Int(secondsRemaining))s left)")
+                return nil
+            }
+        }
+
+        return token
+    }
+
+    private static func loadProjectID() -> String? {
+        guard
+            let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+            let plist = NSDictionary(contentsOfFile: path),
+            let projectID = plist[Keys.projectIDPlistKey] as? String
+        else {
+            return nil
+        }
+
+        return projectID
     }
 }

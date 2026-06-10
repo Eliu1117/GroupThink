@@ -11,15 +11,6 @@ private enum BridgeKeys {
     static let appGroupID = "group.com.davechengapps.screentimedemo"
     static let activeSessionContextKey = "studyHall.activeSessionContext"
     static let pendingOpenedEventsKey = "studyHall.pendingOpenedEvents"
-    static let currentGroupIdKey = "currentGroupId"
-    static let currentSessionIdKey = "currentSessionId"
-    static let currentUserIdKey = "currentUserId"
-}
-
-private struct ActiveSessionContext: Codable {
-    let groupID: String
-    let sessionID: String
-    let userUID: String
 }
 
 private struct PendingOpenedEvent: Codable {
@@ -34,12 +25,8 @@ enum ExtensionSessionBridge {
         UserDefaults(suiteName: BridgeKeys.appGroupID)
     }
 
-    static func handleBlockedAppOpened() {
-        ExtensionFirebaseWriter.markOpenedFromBackground()
-    }
-
     static func enqueuePendingOpenedFallback() {
-        guard let context = loadActiveSession() else {
+        guard let context = ExtensionSessionContext.load() else {
             print("[DeviceActivity Monitor] No active session context — skipping opened fallback queue")
             return
         }
@@ -48,26 +35,7 @@ enum ExtensionSessionBridge {
         print("[DeviceActivity Monitor] Queued opened fallback for \(context.userUID)")
     }
 
-    private static func loadActiveSession() -> ActiveSessionContext? {
-        guard let defaults else { return nil }
-
-        if let data = defaults.data(forKey: BridgeKeys.activeSessionContextKey),
-           let context = try? JSONDecoder().decode(ActiveSessionContext.self, from: data) {
-            return context
-        }
-
-        guard
-            let groupID = defaults.string(forKey: BridgeKeys.currentGroupIdKey),
-            let sessionID = defaults.string(forKey: BridgeKeys.currentSessionIdKey),
-            let userUID = defaults.string(forKey: BridgeKeys.currentUserIdKey)
-        else {
-            return nil
-        }
-
-        return ActiveSessionContext(groupID: groupID, sessionID: sessionID, userUID: userUID)
-    }
-
-    private static func enqueuePendingOpened(for context: ActiveSessionContext) {
+    private static func enqueuePendingOpened(for context: ExtensionSessionContext) {
         guard let defaults else { return }
 
         var events: [PendingOpenedEvent] = []
