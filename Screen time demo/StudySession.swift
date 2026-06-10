@@ -2,7 +2,7 @@
 //  StudySession.swift
 //  Screen time demo
 //
-//  Firestore document model for `groups/{groupId}/sessions/{sessionId}`.
+//  Firestore document model for `sessions/{groupId}`.
 //
 
 import FirebaseFirestore
