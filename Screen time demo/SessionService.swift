@@ -3,11 +3,12 @@
 //  Screen time demo
 //
 //  Firestore reads/writes for the group's single active-session slot:
-//  `sessions/{groupId}`.
+//  `groups/{groupId}/sessions/current`.
 //
-//  The group ID is the document ID, so there is no subcollection and no
-//  fixed suffix. Each new session overwrites this document (setData) and
-//  embeds a fresh UUID in the `sessionId` field for stats idempotency.
+//  Each new session overwrites this document (setData) and embeds a fresh
+//  UUID in the `sessionId` field. This eliminates per-session document
+//  creation/deletion costs and makes the path predictable for both the
+//  SDK and the extension REST layer.
 //
 
 import FirebaseFirestore
@@ -43,10 +44,10 @@ final class SessionService {
 
     private init() {}
 
-    /// The single session slot for a group. The group ID is the document ID,
-    /// so the path is always a direct lookup: `sessions/{groupID}`.
+    /// The single session slot for a group. All sessions share this document path;
+    /// the embedded `sessionId` UUID distinguishes them for stats idempotency.
     private func activeSessionRef(for groupID: String) -> DocumentReference {
-        db.collection("sessions").document(groupID)
+        db.collection("groups").document(groupID).collection("sessions").document("current")
     }
 
     // MARK: - Observe

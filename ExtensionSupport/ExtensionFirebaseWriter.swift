@@ -97,7 +97,7 @@ enum ExtensionFirebaseWriter {
             let encodedMask = fieldPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
             let body = buildPatchBody(userUID: context.userUID),
             let url = URL(string:
-                "https://firestore.googleapis.com/v1/projects/\(projectID)/databases/(default)/documents/sessions/\(context.groupID)?updateMask.fieldPaths=\(encodedMask)"
+                "https://firestore.googleapis.com/v1/projects/\(projectID)/databases/(default)/documents/groups/\(context.groupID)/sessions/current?updateMask.fieldPaths=\(encodedMask)"
             )
         else {
             print("[\(source.logLabel)] Failed to build PATCH request")
