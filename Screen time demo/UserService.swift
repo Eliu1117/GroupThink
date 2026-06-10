@@ -40,7 +40,9 @@ final class UserService {
                     "photoURL": NSNull(),
                     "stats": [
                         "focusMinutes": 0,
+                        "totalViolations": 0,
                         "currentStreak": 0,
+                        "lastSessionDateStr": NSNull(),
                     ],
                 ])
                 print("[UserService] Created user doc for \(uid) → \(trimmed)")

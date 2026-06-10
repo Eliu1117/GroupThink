@@ -319,8 +319,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				C1C2D4062FCE90010023BF62 /* StudyHallShield */,
 				C1C2D4052FCE90010023BF62 /* ExtensionSupport */,
+				C1C2D4062FCE90010023BF62 /* StudyHallShield */,
 			);
 			name = StudyHallShield;
 			packageProductDependencies = (

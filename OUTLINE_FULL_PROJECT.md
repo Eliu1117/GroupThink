@@ -88,7 +88,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 4 — Social Presence *(current priority)*
+## Phase 4 — Social Presence **{DONE}**
 
 ### Step 1 — Per-Member Live State
 - Firestore listener in `SessionView` on the `participants` map
@@ -115,7 +115,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 5 — Stats & Retention
+## Phase 5 — Stats & Retention **{DONE}**
 
 ### Step 1 — Track Focus Minutes
 - On session end, compute `durationMin` for each participant who stayed `"focused"` the whole session
@@ -135,7 +135,7 @@ No Firebase, no auth, no networking. See `OUTLINE_DEMO.md` for full detail.
 
 ---
 
-## Phase 6 — Differentiators (pick 1–2)
+## Phase 6 — Differentiators (pick 1–2) **(current priority)**
 
 ### Option A — Stakes / Penalty
 - Opt-in at session creation: "Donate $X to [charity you dislike] if you bail"

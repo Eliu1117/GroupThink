@@ -304,13 +304,16 @@ This requires Apple approval and can take time — submit early.
 * **Shield Bystander (Detect "Opened Blocked App"):** The `DeviceActivityMonitor` extension (`StudyHallMonitor`) must override `intervalDidReachThreshold`. When triggered, it should perform a direct Firestore write or invoke a lightweight background network task to set the member's status to `"opened"`.
 
 ## Where things stand right now
-* **Completed:** Phase 0, 1, 2, and 3. Screen Time shielding, Firebase Auth, Group creation/deletion, and Session synchronization (`SessionService`, `GroupService`) are fully implemented and verified on physical devices.
-* **Current Target:** Phase 4 (Social Presence).
-* **Shared Infrastructure:** Use the existing App Group identifier (`group.com.davechengapps.screentimedemo`) to share Firestore session state or configurations between the main app targets and the `StudyHallMonitor` device activity extension.
 
-### Phase 4 UI Requirements
-* **Leaderboard Row component:** Displays participant name and an status indicator dot.
-* **Color Mapping:**
-    * `"focused"` -> `.green`
-    * `"left"` -> `.yellow`
-    * `"opened"` -> `.red`
+### Progress Summary
+* **Phase 0 to 5 are 100% COMPLETE.** Screen Time shielding, Firebase Auth, Group management, Real-time multi-user session synchronization, Instant Shield-triggered presence tracking ("focused", "left", "opened"), FCM token management, and aggregated write-time user statistics/streaks are fully implemented, optimized, and verified on physical devices.
+
+### Current Objective: Bug Fixing, Hardening & Guardrails
+We have officially frozen feature development. The focus is now entirely on identifying edge cases, squashing bugs, memory management, and refining the user experience. 
+
+When analyzing code or generating solutions, prioritize the following stability directives:
+
+1. **Deadlock & Freeze Prevention:** Ensure all Firestore real-time snapshot listeners are cleanly detached via `.remove()` during `.onDisappear`, session teardown, or unexpected app termination. Prevent UI deadlocks when documents are modified or deleted by the host.
+2. **Race Condition Hardening:** Audit async/await routines, especially around Firebase Auth state changes and user initialization, ensuring no views attempt to load data before the underlying authentication tokens are fully resolved.
+3. **Network Resilience & Edge Cases:** Ensure the app handles sudden network drops gracefully without crashing or creating infinite loading spinners.
+4. **Memory Leak Auditing:** Watch out for strong reference cycles (`self`) inside escaping closures, Firestore listeners, and URLSession delegates. Use `[weak self]` where appropriate.

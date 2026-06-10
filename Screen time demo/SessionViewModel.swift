@@ -318,19 +318,27 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
-    /// Phase 5 — awards focus minutes and streaks for the LOCAL user if they
-    /// stayed focused. Idempotent per session (guarded inside StatsService).
+    /// Phase 5 — awards focus minutes and records violations for the LOCAL user.
+    /// Focused users earn full elapsed minutes; opened-app users earn 0 minutes
+    /// but a violation count. Idempotent per session (guarded inside StatsService).
     private func awardStats(for session: StudySession) {
         guard let groupID, let currentUID else { return }
-        guard session.participants[currentUID] == .focused else {
-            print("[Stats] No award — local user did not stay focused")
+
+        let state = session.participants[currentUID]
+        let violated = state == .opened
+
+        let focusMinutes: Int
+        if state == .focused, let startAt = session.startAt {
+            let elapsed = Int((Date().timeIntervalSince(startAt) / 60).rounded())
+            focusMinutes = min(session.durationMin, max(elapsed, 0))
+        } else {
+            focusMinutes = 0
+        }
+
+        guard focusMinutes > 0 || violated else {
+            print("[Stats] No award — local user left or was not a participant")
             return
         }
-        guard let startAt = session.startAt else { return }
-
-        let elapsedMinutes = Int((Date().timeIntervalSince(startAt) / 60).rounded())
-        let minutes = min(session.durationMin, max(elapsedMinutes, 0))
-        guard minutes > 0 else { return }
 
         let sessionID = session.id
         Task {
@@ -338,7 +346,8 @@ final class SessionViewModel: ObservableObject {
                 groupID: groupID,
                 sessionID: sessionID,
                 userUID: currentUID,
-                focusMinutes: minutes
+                focusMinutes: focusMinutes,
+                violated: violated
             )
         }
     }

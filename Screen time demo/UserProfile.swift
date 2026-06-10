@@ -10,9 +10,10 @@ struct UserProfile: Equatable {
     let displayName: String
     let photoURL: URL?
     let focusMinutes: Int
+    let totalViolations: Int
     let currentStreak: Int
-    /// Last calendar day the user completed a session as `"focused"` (Phase 5 streaks).
-    let lastSessionDate: Date?
+    /// Last calendar day the user completed a session, stored as `"yyyy-MM-dd"`.
+    let lastSessionDateStr: String?
 
     init?(document: DocumentSnapshot) {
         guard document.exists, let data = document.data() else { return nil }
@@ -27,7 +28,8 @@ struct UserProfile: Equatable {
 
         let stats = data["stats"] as? [String: Any]
         focusMinutes = stats?["focusMinutes"] as? Int ?? 0
+        totalViolations = stats?["totalViolations"] as? Int ?? 0
         currentStreak = stats?["currentStreak"] as? Int ?? 0
-        lastSessionDate = (stats?["lastSessionDate"] as? Timestamp)?.dateValue()
+        lastSessionDateStr = stats?["lastSessionDateStr"] as? String
     }
 }

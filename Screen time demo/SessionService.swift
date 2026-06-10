@@ -219,6 +219,8 @@ final class SessionService {
 
     // MARK: - End
 
+    /// Verifies the caller is the host then permanently deletes the session document.
+    /// All listeners drop to nil immediately, triggering local teardown on every device.
     func endSession(groupID: String, sessionID: String, requesterUID: String) async throws {
         let ref = sessions(for: groupID).document(sessionID)
         let snapshot = try await ref.getDocument()
@@ -231,9 +233,7 @@ final class SessionService {
             throw SessionServiceError.notHost
         }
 
-        try await ref.updateData([
-            "status": SessionStatus.ended.rawValue,
-        ])
-        print("[Firestore Session] Ended session \(sessionID)")
+        try await ref.delete()
+        print("[Firestore Session] Deleted session document \(sessionID) in group \(groupID)")
     }
 }

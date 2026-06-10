@@ -29,23 +29,24 @@ final class StatsService {
     // MARK: - Public entry point
 
     /// Records a completed session for the local user: increments focus minutes,
-    /// advances the individual streak, then attempts the group streak update.
+    /// logs violations, advances the individual streak, then attempts the group streak update.
     /// Safe to call multiple times for the same session — only the first call wins.
     func recordSessionCompletion(
         groupID: String,
         sessionID: String,
         userUID: String,
-        focusMinutes: Int
+        focusMinutes: Int,
+        violated: Bool = false
     ) async {
-        guard focusMinutes > 0 else { return }
+        guard focusMinutes > 0 || violated else { return }
         guard markAwarded(sessionID: sessionID) else {
             print("[Stats] Session \(sessionID) already awarded — skipping")
             return
         }
 
         do {
-            try await updateUserStats(userUID: userUID, focusMinutes: focusMinutes)
-            print("[Stats] Awarded \(focusMinutes) focus min to \(userUID) for session \(sessionID)")
+            try await updateUserStats(userUID: userUID, durationMinutes: focusMinutes, violated: violated)
+            print("[Stats] Awarded \(focusMinutes)min / violated=\(violated) to \(userUID) for session \(sessionID)")
         } catch {
             // Allow a retry on the next session-end signal.
             unmarkAwarded(sessionID: sessionID)
@@ -58,10 +59,32 @@ final class StatsService {
 
     // MARK: - Individual stats (focus minutes + streak)
 
-    /// Transactionally increments `stats.focusMinutes`, advances `stats.currentStreak`
-    /// based on `stats.lastSessionDate`, and stamps today as the last session day.
-    private func updateUserStats(userUID: String, focusMinutes: Int) async throws {
+    /// Atomically increments `stats.focusMinutes` and (if violated) `stats.totalViolations`
+    /// using `FieldValue.increment` — no document read required.
+    /// Streak update requires a read and runs in a separate transaction.
+    func updateUserStats(userUID: String, durationMinutes: Int, violated: Bool) async throws {
         let ref = db.collection("users").document(userUID)
+
+        // Blind atomic increments — write without reading.
+        var increments: [String: Any] = [:]
+        if durationMinutes > 0 {
+            increments["stats.focusMinutes"] = FieldValue.increment(Int64(durationMinutes))
+        }
+        if violated {
+            increments["stats.totalViolations"] = FieldValue.increment(Int64(1))
+        }
+        if !increments.isEmpty {
+            try await ref.setData(increments, merge: true)
+        }
+
+        // Streak advance requires knowing last session's date — transaction read is necessary.
+        try await updateStreakIfNeeded(ref: ref)
+    }
+
+    /// Reads `stats.lastSessionDateStr`, computes the new streak, and writes both
+    /// the streak and today's date string back atomically.
+    private func updateStreakIfNeeded(ref: DocumentReference) async throws {
+        let todayStr = Self.dateString(from: Date())
 
         _ = try await db.runTransaction { transaction, errorPointer in
             let snapshot: DocumentSnapshot
@@ -73,21 +96,17 @@ final class StatsService {
             }
 
             let stats = snapshot.data()?["stats"] as? [String: Any]
-            let currentMinutes = stats?["focusMinutes"] as? Int ?? 0
             let currentStreak = stats?["currentStreak"] as? Int ?? 0
-            let lastSessionDate = (stats?["lastSessionDate"] as? Timestamp)?.dateValue()
+            let lastDateStr = stats?["lastSessionDateStr"] as? String
 
-            let now = Date()
-            let newStreak = Self.nextStreak(current: currentStreak, lastDate: lastSessionDate, now: now)
+            let newStreak = Self.nextStreakByDateString(
+                current: currentStreak,
+                lastDateStr: lastDateStr,
+                todayStr: todayStr
+            )
 
             transaction.setData(
-                [
-                    "stats": [
-                        "focusMinutes": currentMinutes + focusMinutes,
-                        "currentStreak": newStreak,
-                        "lastSessionDate": Timestamp(date: now),
-                    ],
-                ],
+                ["stats": ["currentStreak": newStreak, "lastSessionDateStr": todayStr]],
                 forDocument: ref,
                 merge: true
             )
@@ -95,26 +114,39 @@ final class StatsService {
         }
     }
 
-    /// Streak rules: same day → unchanged, yesterday → +1, gap or first session → reset to 1.
-    static func nextStreak(
+    // MARK: - Streak helpers
+
+    /// Computes the next streak value using `yyyy-MM-dd` string comparison.
+    /// - Same day → keep (idempotent).
+    /// - Yesterday → increment.
+    /// - Gap or first session → reset to 1.
+    static func nextStreakByDateString(
         current: Int,
-        lastDate: Date?,
-        now: Date = Date(),
-        calendar: Calendar = .current
+        lastDateStr: String?,
+        todayStr: String
     ) -> Int {
-        guard let lastDate else { return 1 }
+        guard let lastDateStr else { return 1 }
+        if lastDateStr == todayStr { return max(current, 1) }
 
-        if calendar.isDate(lastDate, inSameDayAs: now) {
-            return max(current, 1)
-        }
+        let formatter = Self.dateFormatter
+        guard
+            let today = formatter.date(from: todayStr),
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)
+        else { return 1 }
 
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(lastDate, inSameDayAs: yesterday) {
-            return current + 1
-        }
-
-        return 1
+        return formatter.string(from: yesterday) == lastDateStr ? current + 1 : 1
     }
+
+    static func dateString(from date: Date) -> String {
+        dateFormatter.string(from: date)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     // MARK: - Group streak
 
@@ -134,12 +166,12 @@ final class StatsService {
                   !memberUids.isEmpty
             else { return }
 
-            if let lastUpdate = (data["lastGroupStreakUpdate"] as? Timestamp)?.dateValue(),
-               calendar.isDate(lastUpdate, inSameDayAs: now) {
+            if let lastUpdateStr = data["lastGroupStreakUpdateStr"] as? String,
+               lastUpdateStr == Self.dateString(from: now) {
                 return // Already counted today.
             }
 
-            guard await allMembersStudiedToday(memberUids, calendar: calendar, now: now) else {
+            guard await allMembersStudiedToday(memberUids, now: now) else {
                 print("[Stats] Group \(groupID): not all members studied today — streak unchanged")
                 return
             }
@@ -154,20 +186,25 @@ final class StatsService {
                 }
 
                 let data = snapshot.data()
-                let lastUpdate = (data?["lastGroupStreakUpdate"] as? Timestamp)?.dateValue()
+                let lastUpdateStr = data?["lastGroupStreakUpdateStr"] as? String
+                let todayStr = Self.dateString(from: now)
 
                 // Re-check inside the transaction: another member may have just counted today.
-                if let lastUpdate, calendar.isDate(lastUpdate, inSameDayAs: now) {
+                if lastUpdateStr == todayStr {
                     return nil
                 }
 
                 let currentStreak = data?["currentGroupStreak"] as? Int ?? 0
-                let newStreak = Self.nextStreak(current: currentStreak, lastDate: lastUpdate, now: now, calendar: calendar)
+                let newStreak = Self.nextStreakByDateString(
+                    current: currentStreak,
+                    lastDateStr: lastUpdateStr,
+                    todayStr: todayStr
+                )
 
                 transaction.updateData(
                     [
                         "currentGroupStreak": newStreak,
-                        "lastGroupStreakUpdate": Timestamp(date: now),
+                        "lastGroupStreakUpdateStr": todayStr,
                     ],
                     forDocument: groupRef
                 )
@@ -180,19 +217,16 @@ final class StatsService {
         }
     }
 
-    private func allMembersStudiedToday(
-        _ memberUids: [String],
-        calendar: Calendar,
-        now: Date
-    ) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
+    private func allMembersStudiedToday(_ memberUids: [String], now: Date) async -> Bool {
+        let todayStr = Self.dateString(from: now)
+        return await withTaskGroup(of: Bool.self) { group in
             for uid in memberUids {
                 group.addTask {
                     guard let snapshot = try? await self.db.collection("users").document(uid).getDocument(),
                           let stats = snapshot.data()?["stats"] as? [String: Any],
-                          let last = (stats["lastSessionDate"] as? Timestamp)?.dateValue()
+                          let lastStr = stats["lastSessionDateStr"] as? String
                     else { return false }
-                    return calendar.isDate(last, inSameDayAs: now)
+                    return lastStr == todayStr
                 }
             }
 
@@ -204,7 +238,7 @@ final class StatsService {
             }
             return true
         }
-    }
+    }  
 
     // MARK: - Idempotency
 
