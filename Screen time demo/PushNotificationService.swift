@@ -77,9 +77,10 @@ extension PushNotificationService: UNUserNotificationCenterDelegate {
 
 extension PushNotificationService: MessagingDelegate {
     nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        guard let fcmToken else { return }
+        guard let token = fcmToken else { return }
+        print("DEBUG: Captured FCM Token -> \(token)")
         Task { @MainActor in
-            await PushNotificationService.shared.handleTokenRefresh(fcmToken)
+            await PushNotificationService.shared.handleTokenRefresh(token)
         }
     }
 }

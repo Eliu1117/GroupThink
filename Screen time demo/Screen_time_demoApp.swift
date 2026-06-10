@@ -18,11 +18,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         FirebaseApp.configure()
         FirebaseAuthConfigurator.configureSharedKeychainAccess()
+        // Delegates must be attached synchronously, before FCM vends the initial token.
+        PushNotificationService.shared.configureDelegates()
         Task {
             await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: false)
-        }
-        Task { @MainActor in
-            PushNotificationService.shared.configureDelegates()
         }
         return true
     }
@@ -33,6 +32,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) {
         Messaging.messaging().apnsToken = deviceToken
         print("[FCM] APNs device token registered")
+
+        // The APNs token is the prerequisite for an FCM token — fetch and persist now.
+        Task {
+            do {
+                let token = try await Messaging.messaging().token()
+                await PushNotificationService.shared.handleTokenRefresh(token)
+            } catch {
+                print("[FCM] Token fetch after APNs registration failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     func application(
