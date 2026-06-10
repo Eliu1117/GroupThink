@@ -2,7 +2,8 @@
 //  StudyHallMonitor.swift
 //  StudyHallMonitor
 //
-//  DeviceActivityMonitor extension — shields, unshields, and opened-app presence queueing.
+//  DeviceActivityMonitor extension — shields and unshields during scheduled intervals.
+//  "Opened" detection lives in StudyHallShield (instant shield render), not threshold events.
 //
 
 import DeviceActivity
@@ -41,19 +42,9 @@ class StudyHallMonitor: DeviceActivityMonitor {
             return
         }
 
-        guard let context = ExtensionSessionContext.load() else {
-            print("[DeviceActivity Monitor] No session context in App Group — queueing fallback")
-            ExtensionSessionBridge.enqueuePendingOpenedFallback()
-            return
-        }
-
-        print(
-            "[DeviceActivity Monitor] openedBlockedApp threshold — session \(context.sessionID), user \(context.userUID)"
-        )
-
-        // Hand off Firestore REST PATCH to nsurlsessiond via a background URLSession upload task.
-        ExtensionFirebaseWriter.markOpenedFromBackground(context: context)
-        print("[DeviceActivity Monitor] openedBlockedApp upload enqueued to background URL session")
+        // Threshold events require sustained usage and miss short taps.
+        // StudyHallShield reports "opened" the instant the shield UI is requested.
+        print("[DeviceActivity Monitor] openedBlockedApp threshold observed (handled by StudyHallShield)")
     }
 
     private func applyShields() {

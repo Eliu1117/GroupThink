@@ -1,55 +1,84 @@
 //
 //  ExtensionFirebaseWriter.swift
-//  StudyHallMonitor
+//  ExtensionSupport
 //
-//  Firestore REST PATCH via URLSessionConfiguration.background — handed off to nsurlsessiond
-//  so network continues after the DeviceActivityMonitor extension is suspended.
+//  Firestore REST PATCH via URLSessionConfiguration.background — handed off to nsurlsessiond.
 //
 
 import Foundation
 
+enum OpenedWriteSource {
+    case shield
+    case monitor
+
+    var backgroundSessionIdentifier: String {
+        switch self {
+        case .shield:
+            return "com.davechengapps.screentimedemo.shieldTask"
+        case .monitor:
+            return "com.davechengapps.screentimedemo.backgroundsession"
+        }
+    }
+
+    var logLabel: String {
+        switch self {
+        case .shield:
+            return "Shield REST"
+        case .monitor:
+            return "Extension REST"
+        }
+    }
+}
+
 enum ExtensionFirebaseWriter {
     private enum Keys {
         static let appGroupID = "group.com.davechengapps.screentimedemo"
-        static let backgroundSessionIdentifier = "com.davechengapps.screentimedemo.backgroundsession"
         static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
         static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
+        static let lastOpenedReportKey = "studyHall.lastOpenedReport"
         static let projectIDPlistKey = "PROJECT_ID"
     }
 
     private static let tokenExpiryBuffer: TimeInterval = 60
     private static let sessionDelegate = BackgroundURLSessionDelegate.shared
-
-    private static let backgroundSession: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: Keys.backgroundSessionIdentifier)
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
-        config.sharedContainerIdentifier = Keys.appGroupID
-        return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
-    }()
+    private static var backgroundSessions: [String: URLSession] = [:]
+    private static let sessionLock = NSLock()
 
     /// Enqueues a background Firestore REST PATCH. Returns immediately; nsurlsessiond performs the upload.
-    static func markOpenedFromBackground(context: ExtensionSessionContext? = ExtensionSessionContext.load()) {
+    static func markOpenedFromBackground(
+        source: OpenedWriteSource,
+        context: ExtensionSessionContext? = ExtensionSessionContext.load()
+    ) {
         guard let context else {
-            print("[Extension REST] Missing session context — cannot write opened state")
+            print("[\(source.logLabel)] Missing session context — cannot write opened state")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
+        guard shouldReportOpened(context: context) else {
+            print("[\(source.logLabel)] Skipping duplicate opened report for \(context.userUID)")
+            return
+        }
+
         guard let projectID = loadProjectID() else {
-            print("[Extension REST] Missing Firebase project ID — queueing fallback")
+            print("[\(source.logLabel)] Missing Firebase project ID — queueing fallback")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
         guard let idToken = loadCachedIDToken() else {
-            print("[Extension REST] No valid cached ID token — queueing fallback")
+            print("[\(source.logLabel)] No valid cached ID token — queueing fallback")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
 
-        guard enqueueBackgroundPatch(projectID: projectID, context: context, idToken: idToken) else {
-            print("[Extension REST] Failed to enqueue background upload — queueing fallback")
+        guard enqueueBackgroundPatch(
+            source: source,
+            projectID: projectID,
+            context: context,
+            idToken: idToken
+        ) else {
+            print("[\(source.logLabel)] Failed to enqueue background upload — queueing fallback")
             ExtensionSessionBridge.enqueuePendingOpenedFallback()
             return
         }
@@ -59,6 +88,7 @@ enum ExtensionFirebaseWriter {
 
     @discardableResult
     private static func enqueueBackgroundPatch(
+        source: OpenedWriteSource,
         projectID: String,
         context: ExtensionSessionContext,
         idToken: String
@@ -71,7 +101,7 @@ enum ExtensionFirebaseWriter {
                 "https://firestore.googleapis.com/v1/projects/\(projectID)/databases/(default)/documents/groups/\(context.groupID)/sessions/\(context.sessionID)?updateMask.fieldPaths=\(encodedMask)"
             )
         else {
-            print("[Extension REST] Failed to build PATCH request")
+            print("[\(source.logLabel)] Failed to build PATCH request")
             return false
         }
 
@@ -80,13 +110,33 @@ enum ExtensionFirebaseWriter {
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let task = backgroundSession.uploadTask(with: request, from: body)
+        let session = backgroundSession(for: source)
+        let task = session.uploadTask(with: request, from: body)
         task.resume()
 
         print(
-            "[Extension REST] Enqueued background upload for \(context.userUID) on session \(context.sessionID)"
+            "[\(source.logLabel)] Enqueued background upload for \(context.userUID) on session \(context.sessionID)"
         )
         return true
+    }
+
+    private static func backgroundSession(for source: OpenedWriteSource) -> URLSession {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+
+        let identifier = source.backgroundSessionIdentifier
+        if let existing = backgroundSessions[identifier] {
+            return existing
+        }
+
+        let config = URLSessionConfiguration.background(withIdentifier: identifier)
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        config.sharedContainerIdentifier = Keys.appGroupID
+
+        let session = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+        backgroundSessions[identifier] = session
+        return session
     }
 
     private static func buildPatchBody(userUID: String) -> Data? {
@@ -109,6 +159,19 @@ enum ExtensionFirebaseWriter {
         ]
 
         return try? JSONSerialization.data(withJSONObject: body)
+    }
+
+    private static func shouldReportOpened(context: ExtensionSessionContext) -> Bool {
+        guard let defaults = UserDefaults(suiteName: Keys.appGroupID) else { return true }
+
+        let marker = "\(context.sessionID):\(context.userUID)"
+        if defaults.string(forKey: Keys.lastOpenedReportKey) == marker {
+            return false
+        }
+
+        defaults.set(marker, forKey: Keys.lastOpenedReportKey)
+        defaults.synchronize()
+        return true
     }
 
     // MARK: - App Group / plist reads

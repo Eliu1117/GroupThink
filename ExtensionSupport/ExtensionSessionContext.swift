@@ -1,6 +1,6 @@
 //
 //  ExtensionSessionContext.swift
-//  StudyHallMonitor
+//  ExtensionSupport
 //
 //  Reads active session metadata from the shared App Group container.
 //

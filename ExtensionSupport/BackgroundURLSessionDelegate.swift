@@ -1,6 +1,6 @@
 //
 //  BackgroundURLSessionDelegate.swift
-//  StudyHallMonitor
+//  ExtensionSupport
 //
 //  Receives completion callbacks for background URLSession uploads handed off to nsurlsessiond.
 //

@@ -107,6 +107,7 @@ final class SessionContextStore {
         defaults?.removeObject(forKey: StudyHallConstants.pendingOpenedEventsKey)
         defaults?.removeObject(forKey: StudyHallConstants.firebaseIdTokenKey)
         defaults?.removeObject(forKey: StudyHallConstants.firebaseIdTokenExpiryKey)
+        defaults?.removeObject(forKey: StudyHallConstants.lastOpenedReportKey)
         defaults?.synchronize()
     }
 

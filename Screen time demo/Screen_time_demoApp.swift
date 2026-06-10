@@ -47,12 +47,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        guard identifier == BackgroundURLSessionRelauncher.identifier else {
-            completionHandler()
-            return
-        }
-
-        BackgroundURLSessionRelauncher.handleEvents(completionHandler: completionHandler)
+        BackgroundURLSessionRelauncher.handleEvents(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
     }
 }
 

@@ -26,6 +26,15 @@ enum StudyHallConstants {
     static let firebaseIdTokenKey = "studyHall.firebaseIdToken"
     static let firebaseIdTokenExpiryKey = "studyHall.firebaseIdTokenExpiry"
 
-    /// Background URLSession identifier shared with StudyHallMonitor (must stay in sync).
+    /// Background URLSession identifiers shared with extensions (must stay in sync).
     static let backgroundURLSessionIdentifier = "com.davechengapps.screentimedemo.backgroundsession"
+    static let shieldBackgroundURLSessionIdentifier = "com.davechengapps.screentimedemo.shieldTask"
+
+    /// Dedupes repeated shield-configuration callbacks for the same session participant.
+    static let lastOpenedReportKey = "studyHall.lastOpenedReport"
+
+    static let backgroundURLSessionIdentifiers = [
+        backgroundURLSessionIdentifier,
+        shieldBackgroundURLSessionIdentifier,
+    ]
 }

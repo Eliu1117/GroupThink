@@ -1,6 +1,6 @@
 //
 //  ExtensionSessionBridge.swift
-//  StudyHallMonitor
+//  ExtensionSupport
 //
 //  App Group fallback queue when direct extension Firestore writes are unavailable.
 //
@@ -9,7 +9,6 @@ import Foundation
 
 private enum BridgeKeys {
     static let appGroupID = "group.com.davechengapps.screentimedemo"
-    static let activeSessionContextKey = "studyHall.activeSessionContext"
     static let pendingOpenedEventsKey = "studyHall.pendingOpenedEvents"
 }
 
@@ -27,12 +26,12 @@ enum ExtensionSessionBridge {
 
     static func enqueuePendingOpenedFallback() {
         guard let context = ExtensionSessionContext.load() else {
-            print("[DeviceActivity Monitor] No active session context — skipping opened fallback queue")
+            print("[Extension] No active session context — skipping opened fallback queue")
             return
         }
 
         enqueuePendingOpened(for: context)
-        print("[DeviceActivity Monitor] Queued opened fallback for \(context.userUID)")
+        print("[Extension] Queued opened fallback for \(context.userUID)")
     }
 
     private static func enqueuePendingOpened(for context: ExtensionSessionContext) {

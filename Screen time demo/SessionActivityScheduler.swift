@@ -2,7 +2,8 @@
 //  SessionActivityScheduler.swift
 //  Screen time demo
 //
-//  Schedules DeviceActivity intervals and threshold events for reliable background unblock + opened-app detection.
+//  Schedules DeviceActivity intervals for reliable background unshield at session end.
+//  Opened-app detection is handled by StudyHallShield when the shield UI renders.
 //
 
 import DeviceActivity
@@ -48,23 +49,8 @@ enum SessionActivityScheduler {
             repeats: false
         )
 
-        var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
-        if !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty {
-            let openedEvent = DeviceActivityEvent(
-                applications: selection.applicationTokens,
-                categories: selection.categoryTokens,
-                threshold: DateComponents(second: 1)
-            )
-            events[.openedBlockedApp] = openedEvent
-        }
-
-        if events.isEmpty {
-            try center.startMonitoring(activityName, during: schedule)
-        } else {
-            try center.startMonitoring(activityName, during: schedule, events: events)
-        }
-
-        print("[DeviceActivity] Scheduled monitoring until \(endDate.formatted()) with \(events.count) event(s)")
+        try center.startMonitoring(activityName, during: schedule)
+        print("[DeviceActivity] Scheduled monitoring until \(endDate.formatted())")
     }
 
     static func stopMonitoring() {
