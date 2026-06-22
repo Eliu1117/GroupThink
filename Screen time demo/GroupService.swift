@@ -56,6 +56,7 @@ final class GroupService {
             "requireBlocklist": true,
             "allowLateJoin": true,
             "creatorOnlyStart": true,
+            "lastSessionDurationMin": 25,
         ]
 
         try await ref.setData(data)
@@ -149,14 +150,56 @@ final class GroupService {
         }
     }
 
+    // MARK: - Break vote cross-session penalty (GRO-11)
+
+    /// Called when a break vote passes to flag that the next session must start penalty-locked.
+    func markBreakPassed(groupID: String) async throws {
+        try await groups.document(groupID).updateData(["breakPassedLastSession": true])
+        print("[Groups] breakPassedLastSession set to true for group \(groupID)")
+    }
+
+    /// Called at the start of a new session to consume the cross-session penalty flag.
+    func clearBreakPenalty(groupID: String) async throws {
+        try await groups.document(groupID).updateData(["breakPassedLastSession": false])
+        print("[Groups] breakPassedLastSession cleared for group \(groupID)")
+    }
+
+    // MARK: - Session duration (GRO-33)
+
+    /// Records the last-used session duration on the group document so all members'
+    /// start-session pickers stay in sync. No creator check — any session host may update this.
+    func updateLastSessionDuration(groupID: String, durationMin: Int) async throws {
+        try await groups.document(groupID).updateData(["lastSessionDurationMin": durationMin])
+        print("[Groups] lastSessionDurationMin set to \(durationMin) for group \(groupID)")
+    }
+
     // MARK: - Settings
 
-    /// Updates a single group setting. Only the creator may change settings.
+    /// Updates a single Bool group setting. Only the creator may change settings.
     func updateGroupSetting(
         groupID: String,
         requesterUID: String,
         key: String,
         value: Bool
+    ) async throws {
+        try await performSettingUpdate(groupID: groupID, requesterUID: requesterUID, key: key, value: value)
+    }
+
+    /// Updates a single Int group setting (e.g. defaultSessionDurationMin). Only the creator may change settings.
+    func updateGroupSetting(
+        groupID: String,
+        requesterUID: String,
+        key: String,
+        value: Int
+    ) async throws {
+        try await performSettingUpdate(groupID: groupID, requesterUID: requesterUID, key: key, value: value)
+    }
+
+    private func performSettingUpdate(
+        groupID: String,
+        requesterUID: String,
+        key: String,
+        value: Any
     ) async throws {
         let ref = groups.document(groupID)
         let snapshot = try await ref.getDocument()

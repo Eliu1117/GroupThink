@@ -48,6 +48,29 @@ final class PushNotificationService: NSObject {
 
     // MARK: - Local notifications
 
+    /// Posts a local notification when a break vote is initiated.
+    /// Each member's device delivers this locally; true remote fan-out to killed
+    /// apps would require a Cloud Function (future work).
+    func postBreakVoteStartedNotification(groupName: String, initiatorName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Break Vote Started — \(groupName)"
+        content.body = "\(initiatorName) initiated a break vote. You have 2 minutes to vote!"
+        content.sound = .default
+        content.categoryIdentifier = "BREAK_VOTE"
+
+        let request = UNNotificationRequest(
+            identifier: "breakVote.\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[Notifications] Failed to post break-vote notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
     /// Posts an immediate local notification announcing the session has ended.
     /// Used when the app observes the end while not in the foreground; true remote
     /// fan-out to killed apps requires an FCM server (Cloud Function — future work).

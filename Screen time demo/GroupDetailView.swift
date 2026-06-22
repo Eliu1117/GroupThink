@@ -2,9 +2,22 @@
 //  GroupDetailView.swift
 //  Screen time demo
 //
+//  GRO-31: Refactored to a three-tab layout so Study Hall session logic,
+//  personal schedule configuration, and group settings are fully decoupled.
+//
 
 import SwiftUI
 import UIKit
+
+// MARK: - Tab model
+
+enum GroupTab: String, CaseIterable {
+    case studyHalls = "Study Halls"
+    case schedules  = "Schedules"
+    case settings   = "Settings"
+}
+
+// MARK: - View
 
 struct GroupDetailView: View {
     let group: Group
@@ -19,9 +32,20 @@ struct GroupDetailView: View {
     @StateObject private var viewModel = GroupDetailViewModel()
     @StateObject private var sessionViewModel = SessionViewModel()
 
+    @State private var selectedTab: GroupTab = .studyHalls
     @State private var didCopyCode = false
     @State private var showDeleteConfirmation = false
     @State private var didAutoStart = false
+    /// Controls the Downtime configuration sheet (presented independently of session logic).
+    @State private var showDowntimeConfig = false
+    /// Controls the Routine configuration sheet.
+    @State private var showRoutineConfig = false
+    /// GRO-28: duration used for the NEXT session created from this screen.
+    /// Seeded from currentGroup.defaultSessionDurationMin and stays in sync with live group changes.
+    @State private var sessionDurationMin: Int = 25
+
+    /// Preset durations shown in the session-start picker (minutes).
+    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
 
     /// Live group doc when available; falls back to the pushed snapshot.
     private var currentGroup: Group {
@@ -33,48 +57,33 @@ struct GroupDetailView: View {
         return currentGroup.createdBy == currentUserUID
     }
 
-    /// True when the current user is allowed to start a new session.
     private var canStartSession: Bool {
         guard currentUserUID != nil else { return false }
         return !currentGroup.creatorOnlyStart || isCreator
     }
 
+    // MARK: - Body
+
     var body: some View {
         List {
-            if sessionViewModel.session != nil {
-                SessionView(
-                    viewModel: sessionViewModel,
-                    memberNames: sessionViewModel.participantNames
-                )
-            }
-
-            if sessionViewModel.session == nil {
-                sessionActionsSection
-            }
-
-            groupSettingsSection
-            leaderboardSection
-            inviteCodeSection
-            membersSection
-
-            if isCreator {
-                deleteGroupSection
-            }
-
-            if let sessionError = sessionViewModel.errorMessage {
-                Section {
-                    Text(sessionError)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+            // ── Segmented tab picker ─────────────────────────────────────
+            Picker("", selection: $selectedTab) {
+                ForEach(GroupTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
                 }
             }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color(.systemGroupedBackground))
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
-            if let groupError = viewModel.errorMessage {
-                Section {
-                    Text(groupError)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
+            // ── Tab content ──────────────────────────────────────────────
+            switch selectedTab {
+            case .studyHalls:
+                studyHallsContent
+            case .schedules:
+                schedulesContent
+            case .settings:
+                settingsContent
             }
         }
         .navigationTitle(currentGroup.name)
@@ -91,8 +100,41 @@ struct GroupDetailView: View {
         } message: {
             Text("Are you sure you want to permanently delete this group? This action cannot be undone.")
         }
+        // ── Sheets ─────────────────────────────────────────────────────
         .sheet(item: $sessionViewModel.sessionSummary) { summary in
             SessionSummaryView(summary: summary)
+        }
+        .sheet(isPresented: $sessionViewModel.showBreakVoteSheet) {
+            NavigationStack {
+                BreakVoteView(
+                    viewModel: sessionViewModel,
+                    currentUID: currentUserUID
+                )
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showDowntimeConfig) {
+            NavigationStack {
+                DowntimeSettingsView(
+                    groupID: currentGroup.id,
+                    currentUID: currentUserUID ?? "",
+                    isGroupCreator: isCreator,
+                    groupFeatureEnabled: currentGroup.downtimeEnabled
+                )
+            }
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showRoutineConfig) {
+            NavigationStack {
+                RoutineSettingsView(
+                    groupID: currentGroup.id,
+                    currentUID: currentUserUID ?? "",
+                    isGroupCreator: isCreator,
+                    groupFeatureEnabled: currentGroup.routineEnabled
+                )
+            }
+            .presentationDetents([.large])
         }
         .overlay {
             if viewModel.isDeleting || sessionViewModel.isSubmitting {
@@ -103,7 +145,6 @@ struct GroupDetailView: View {
         }
         .task(id: group.memberUids) {
             await authViewModel.syncProfileToFirestore()
-
             sessionViewModel.updateGroupSettings(group: currentGroup)
 
             var knownNames: [String: String] = [:]
@@ -111,13 +152,14 @@ struct GroupDetailView: View {
                 knownNames[currentUserUID] = authViewModel.resolvedProfileDisplayName
             }
             await viewModel.loadMembers(for: group, knownNames: knownNames)
-
             sessionViewModel.seedParticipantNames(viewModel.memberNames)
 
-            // Auto-start a session when navigating here directly from group creation.
+            // GRO-28/GRO-33: seed duration picker from last session's duration.
+            sessionDurationMin = currentGroup.lastSessionDurationMin
+
             if autoStartSession, !didAutoStart, canStartSession, sessionViewModel.session == nil {
                 didAutoStart = true
-                _ = await sessionViewModel.createSession()
+                _ = await sessionViewModel.createSession(durationMin: currentGroup.lastSessionDurationMin)
             }
         }
         .onAppear {
@@ -127,76 +169,232 @@ struct GroupDetailView: View {
         .onChange(of: viewModel.liveGroup) { _, liveGroup in
             if let liveGroup {
                 sessionViewModel.updateGroupSettings(group: liveGroup)
+                // GRO-28: only sync the picker when no session is pending/active,
+                // so a mid-session default change doesn't reset the in-flight duration.
+                if sessionViewModel.session == nil {
+                    sessionDurationMin = liveGroup.lastSessionDurationMin
+                }
             }
         }
-        // Session listener and countdown stay alive while subviews (e.g. Leaderboard)
-        // are pushed; cleanup happens in the ViewModels' deinit when truly popped.
         .onChange(of: scenePhase) { _, newPhase in
             sessionViewModel.handleScenePhase(newPhase)
         }
     }
 
-    // MARK: - Session actions
+    // MARK: - Tab: Study Halls
 
-    private var sessionActionsSection: some View {
-        Section {
-            Button {
-                Task { await sessionViewModel.createSession() }
-            } label: {
-                Label("Start Study Hall", systemImage: "play.circle.fill")
-                    .frame(maxWidth: .infinity)
+    @ViewBuilder
+    private var studyHallsContent: some View {
+        // Active / lobby session view
+        if sessionViewModel.session != nil {
+            SessionView(
+                viewModel: sessionViewModel,
+                memberNames: sessionViewModel.participantNames
+            )
+        }
+
+        // Start button (only when no session is live)
+        if sessionViewModel.session == nil {
+            Section {
+                // GRO-28: Duration preset picker — visible to anyone who can start.
+                if canStartSession {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Session Length")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        // Segmented picker for the most common durations.
+                        Picker("Duration", selection: $sessionDurationMin) {
+                            ForEach(Self.durationPresets, id: \.self) { mins in
+                                Text("\(mins)m").tag(mins)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+
+                Button {
+                    Task { await sessionViewModel.createSession(durationMin: sessionDurationMin) }
+                } label: {
+                    Label("Start Study Hall", systemImage: "play.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canStartSession || sessionViewModel.isSubmitting)
+            } footer: {
+                if !canStartSession {
+                    Text("Only the group creator can start a session.")
+                } else if currentGroup.strictMode {
+                    Text("Strict mode is on: all apps will be blocked except each member's whitelist.")
+                } else {
+                    Text("Host a \(sessionDurationMin)-minute focused session for this group.")
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(!canStartSession || sessionViewModel.isSubmitting)
-        } footer: {
-            if !canStartSession {
-                Text("Only the group creator can start a session.")
-            } else if currentGroup.strictMode {
-                Text("Strict mode is on: all apps will be blocked except each member's whitelist (set on the Home tab).")
-            } else {
-                Text("Host a focused study session for this group. Configure your blocklist on the Home tab first.")
+        }
+
+        // Roster — always visible in Study Halls tab
+        membersSection
+
+        // Inline error messages
+        if let err = sessionViewModel.errorMessage {
+            Section {
+                Text(err).font(.footnote).foregroundStyle(.red)
             }
         }
     }
 
-    // MARK: - Group settings
+    // MARK: - Tab: Schedules (GRO-12 / GRO-13)
+
+    @ViewBuilder
+    private var schedulesContent: some View {
+        // ── Empty state ───────────────────────────────────────────────
+        if !currentGroup.downtimeEnabled && !currentGroup.routineEnabled {
+            Section {
+                VStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No Schedules Active")
+                        .font(.headline)
+                    Text("Open a card below to enable and configure Downtime or Routines for your group.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            }
+            .listRowBackground(Color.clear)
+        }
+
+        // ── Downtime card ─────────────────────────────────────────────
+        Section {
+            Button {
+                showDowntimeConfig = true
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "moon.stars.fill")
+                        .font(.title2)
+                        .foregroundStyle(currentGroup.downtimeEnabled ? .indigo : .secondary)
+                        .frame(width: 36)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("Downtime")
+                                .font(.headline)
+                            if currentGroup.downtimeEnabled {
+                                Text("ON")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(.indigo.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(.indigo)
+                            }
+                        }
+                        Text("Nightly app-blocking window with peer overrides")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+        } footer: {
+            Text(currentGroup.downtimeEnabled
+                 ? "Enabled · tap to configure your personal window and manage overrides."
+                 : "Disabled · tap to enable for your group and configure your personal window.")
+        }
+
+        // ── Routines card ─────────────────────────────────────────────
+        Section {
+            Button {
+                showRoutineConfig = true
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "sun.and.horizon.fill")
+                        .font(.title2)
+                        .foregroundStyle(currentGroup.routineEnabled ? .orange : .secondary)
+                        .frame(width: 36)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("Routines")
+                                .font(.headline)
+                            if currentGroup.routineEnabled {
+                                Text("ON")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(.orange.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        Text("Apps stay locked until your routine condition is met")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+        } footer: {
+            Text(currentGroup.routineEnabled
+                 ? "Enabled · tap to configure your routine schedule."
+                 : "Disabled · tap to enable for your group and configure your routine.")
+        }
+    }
+
+    // MARK: - Tab: Settings
+
+    @ViewBuilder
+    private var settingsContent: some View {
+        groupSettingsSection
+        leaderboardSection
+        inviteCodeSection
+
+        if let err = viewModel.errorMessage {
+            Section {
+                Text(err).font(.footnote).foregroundStyle(.red)
+            }
+        }
+
+        if isCreator {
+            deleteGroupSection
+        }
+    }
+
+    // MARK: - Group settings section
 
     private var groupSettingsSection: some View {
         Section {
-            settingRow(
-                key: "strictMode",
-                value: currentGroup.strictMode,
-                title: "Strict Mode",
-                symbol: "lock.shield.fill"
-            )
-            settingRow(
-                key: "requireBlocklist",
-                value: currentGroup.requireBlocklist,
-                title: "Require Blocklist",
-                symbol: "checklist"
-            )
-            settingRow(
-                key: "allowLateJoin",
-                value: currentGroup.allowLateJoin,
-                title: "Allow Late Join",
-                symbol: "person.badge.clock.fill"
-            )
-            settingRow(
-                key: "creatorOnlyStart",
-                value: currentGroup.creatorOnlyStart,
-                title: "Creator-Only Start",
-                symbol: "crown.fill"
-            )
+            settingRow(key: "strictMode",         value: currentGroup.strictMode,         title: "Strict Mode",       symbol: "lock.shield.fill")
+            settingRow(key: "requireBlocklist",    value: currentGroup.requireBlocklist,    title: "Require Blocklist", symbol: "checklist")
+            settingRow(key: "allowLateJoin",       value: currentGroup.allowLateJoin,       title: "Allow Late Join",   symbol: "person.badge.clock.fill")
+            settingRow(key: "creatorOnlyStart",    value: currentGroup.creatorOnlyStart,    title: "Creator-Only Start",symbol: "crown.fill")
+            settingRow(key: "breakVotingEnabled",  value: currentGroup.breakVotingEnabled,  title: "Break Voting",      symbol: "figure.stand.line.dotted.figure.stand")
+            // GRO-33: Duration is auto-saved from the last session; no manual setting row needed.
+            // GRO-32: Downtime and Routine toggles live inside the Schedules tab config sheets.
         } header: {
-            Text("Group Settings")
+            Text("Session Settings")
         } footer: {
             if isCreator {
-                Text("Strict mode blocks every app on members' devices during sessions, except apps they whitelist on the Home tab.")
+                Text("These toggles affect all session participants. Enable Downtime or Routines from the Schedules tab.")
             } else {
                 Text("Only the group creator can change these settings.")
             }
         }
     }
+
 
     @ViewBuilder
     private func settingRow(key: String, value: Bool, title: String, symbol: String) -> some View {
@@ -232,7 +430,7 @@ struct GroupDetailView: View {
         )
     }
 
-    // MARK: - Leaderboard (Phase 5)
+    // MARK: - Leaderboard
 
     private var leaderboardSection: some View {
         Section {
@@ -274,16 +472,12 @@ struct GroupDetailView: View {
         }
     }
 
-    // MARK: - Members
+    // MARK: - Members (shown in Study Halls tab)
 
     private var membersSection: some View {
         Section("Members (\(currentGroup.memberUids.count))") {
             if viewModel.isLoading && viewModel.members.isEmpty {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
+                HStack { Spacer(); ProgressView(); Spacer() }
             } else {
                 ForEach(viewModel.members) { member in
                     HStack(spacing: 12) {
@@ -313,7 +507,7 @@ struct GroupDetailView: View {
         }
     }
 
-    // MARK: - Delete
+    // MARK: - Delete group
 
     private var deleteGroupSection: some View {
         Section {
@@ -329,15 +523,15 @@ struct GroupDetailView: View {
 
     private func deleteGroup() async {
         guard let currentUserUID else { return }
-
         sessionViewModel.stopListening()
         viewModel.stopObservingGroup()
-
         if await viewModel.deleteGroup(groupID: group.id, requesterUID: currentUserUID) {
             dismiss()
         }
     }
 }
+
+// MARK: - Preview
 
 #Preview {
     NavigationStack {

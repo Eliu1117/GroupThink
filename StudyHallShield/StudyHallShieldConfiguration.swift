@@ -2,46 +2,50 @@
 //  StudyHallShieldConfiguration.swift
 //  StudyHallShield
 //
-//  Instant "opened" detection — fires when the system requests shield UI for a blocked app.
+//  ShieldActionDelegate — fires on every user tap of the shield OK button.
+//
+//  ShieldConfigurationDataSource.configuration(shielding:) is cached by iOS per
+//  app instance and therefore does NOT fire on every blocked-app attempt.
+//  ShieldActionDelegate.handle(action:) is an explicit user interaction callback
+//  that has no caching and fires synchronously for every shield dismissal.
 //
 
 import ManagedSettings
 import ManagedSettingsUI
-import UIKit
 
-final class StudyHallShieldConfiguration: ShieldConfigurationDataSource {
-    private var studyHallShield: ShieldConfiguration {
-        ShieldConfiguration(
-            backgroundBlurStyle: .systemThickMaterial,
-            backgroundColor: UIColor.systemOrange.withAlphaComponent(0.18),
-            icon: UIImage(systemName: "books.vertical.fill"),
-            title: ShieldConfiguration.Label(text: "Study Hall", color: .label),
-            subtitle: ShieldConfiguration.Label(
-                text: "This app is blocked during your focus session.",
-                color: .secondaryLabel
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(text: "OK", color: .label),
-            primaryButtonBackgroundColor: .systemOrange
-        )
-    }
+final class StudyHallShieldConfiguration: ShieldActionDelegate {
 
-    override func configuration(shielding application: Application) -> ShieldConfiguration {
+    override func handle(
+        action: ShieldAction,
+        for application: Application,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
         reportOpenedInstantly(origin: "application")
-        return studyHallShield
+        completionHandler(.close)
     }
 
-    override func configuration(shielding application: Application, in category: ActivityCategory) -> ShieldConfiguration {
+    override func handle(
+        action: ShieldAction,
+        for application: Application,
+        in category: ActivityCategory,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
+        // Strict mode: apps are blocked by category (.all except whitelist).
         reportOpenedInstantly(origin: "category")
-        return studyHallShield
+        completionHandler(.close)
     }
 
-    override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
+    override func handle(
+        action: ShieldAction,
+        for webDomain: WebDomain,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
         reportOpenedInstantly(origin: "webDomain")
-        return studyHallShield
+        completionHandler(.close)
     }
 
     private func reportOpenedInstantly(origin: String) {
-        print("[Shield Extension] Shield rendered (\(origin)) — enqueueing opened state")
+        print("[Shield Extension] Shield dismissed (\(origin)) — enqueueing opened state")
         ExtensionFirebaseWriter.markOpenedFromBackground(source: .shield)
     }
 }

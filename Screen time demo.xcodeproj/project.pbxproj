@@ -17,6 +17,7 @@
 		AD7E961C2FCE81F7009F57F6 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AD7E961B2FCE81F7009F57F6 /* FirebaseStorage */; };
 		B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C1C2D4012FCE90010023BF62 /* StudyHallShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C1C2D4002FCE90010023BF62 /* StudyHallShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D1D2D5012FCE90010023BF62 /* StudyHallShieldUI.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D1D2D5002FCE90010023BF62 /* StudyHallShieldUI.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +49,13 @@
 			remoteGlobalIDString = C1C2D4022FCE90010023BF62;
 			remoteInfo = StudyHallShield;
 		};
+		D1D2D5032FCE90010023BF62 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA36A9B92FCE14D10023BF62 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D1D2D5022FCE90010023BF62;
+			remoteInfo = StudyHallShieldUI;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -59,6 +67,7 @@
 			files = (
 				B1C2D3E42FCE90010023BF62 /* StudyHallMonitor.appex in Embed Foundation Extensions */,
 				C1C2D4012FCE90010023BF62 /* StudyHallShield.appex in Embed Foundation Extensions */,
+				D1D2D5012FCE90010023BF62 /* StudyHallShieldUI.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -71,6 +80,7 @@
 		AA36A9D82FCE14D50023BF62 /* Screen time demoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Screen time demoUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyHallMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1C2D4002FCE90010023BF62 /* StudyHallShield.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyHallShield.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1D2D5002FCE90010023BF62 /* StudyHallShieldUI.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StudyHallShieldUI.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -87,6 +97,13 @@
 				Info.plist,
 			);
 			target = C1C2D4022FCE90010023BF62 /* StudyHallShield */;
+		};
+		D1D2D5042FCE90010023BF62 /* Exceptions for "StudyHallShieldUI" folder in "StudyHallShieldUI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D1D2D5022FCE90010023BF62 /* StudyHallShieldUI */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -125,6 +142,14 @@
 				C1C2D4042FCE90010023BF62 /* Exceptions for "StudyHallShield" folder in "StudyHallShield" target */,
 			);
 			path = StudyHallShield;
+			sourceTree = "<group>";
+		};
+		D1D2D5052FCE90010023BF62 /* StudyHallShieldUI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D1D2D5042FCE90010023BF62 /* Exceptions for "StudyHallShieldUI" folder in "StudyHallShieldUI" target */,
+			);
+			path = StudyHallShieldUI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -173,6 +198,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1D2D5082FCE90010023BF62 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -183,6 +215,7 @@
 				C1C2D4052FCE90010023BF62 /* ExtensionSupport */,
 				B1C2D3E22FCE90010023BF62 /* StudyHallMonitor */,
 				C1C2D4062FCE90010023BF62 /* StudyHallShield */,
+				D1D2D5052FCE90010023BF62 /* StudyHallShieldUI */,
 				AA36A9D12FCE14D50023BF62 /* Screen time demoTests */,
 				AA36A9DB2FCE14D50023BF62 /* Screen time demoUITests */,
 				AA36A9C22FCE14D10023BF62 /* Products */,
@@ -195,6 +228,7 @@
 				AA36A9C12FCE14D10023BF62 /* Screen time demo.app */,
 				B1C2D3E12FCE90010023BF62 /* StudyHallMonitor.appex */,
 				C1C2D4002FCE90010023BF62 /* StudyHallShield.appex */,
+				D1D2D5002FCE90010023BF62 /* StudyHallShieldUI.appex */,
 				AA36A9CE2FCE14D50023BF62 /* Screen time demoTests.xctest */,
 				AA36A9D82FCE14D50023BF62 /* Screen time demoUITests.xctest */,
 			);
@@ -218,6 +252,7 @@
 			dependencies = (
 				B1C2D3E62FCE90010023BF62 /* PBXTargetDependency */,
 				C1C2D4072FCE90010023BF62 /* PBXTargetDependency */,
+				D1D2D5062FCE90010023BF62 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA36A9C32FCE14D10023BF62 /* Screen time demo */,
@@ -329,6 +364,28 @@
 			productReference = C1C2D4002FCE90010023BF62 /* StudyHallShield.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		D1D2D5022FCE90010023BF62 /* StudyHallShieldUI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1D2D50C2FCE90010023BF62 /* Build configuration list for PBXNativeTarget "StudyHallShieldUI" */;
+			buildPhases = (
+				D1D2D5072FCE90010023BF62 /* Sources */,
+				D1D2D5082FCE90010023BF62 /* Frameworks */,
+				D1D2D5092FCE90010023BF62 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D1D2D5052FCE90010023BF62 /* StudyHallShieldUI */,
+			);
+			name = StudyHallShieldUI;
+			packageProductDependencies = (
+			);
+			productName = StudyHallShieldUI;
+			productReference = D1D2D5002FCE90010023BF62 /* StudyHallShieldUI.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -353,9 +410,12 @@
 					B1C2D3E32FCE90010023BF62 = {
 						CreatedOnToolsVersion = 26.5;
 					};
-					C1C2D4022FCE90010023BF62 = {
-						CreatedOnToolsVersion = 26.5;
-					};
+				C1C2D4022FCE90010023BF62 = {
+					CreatedOnToolsVersion = 26.5;
+				};
+				D1D2D5022FCE90010023BF62 = {
+					CreatedOnToolsVersion = 26.5;
+				};
 				};
 			};
 			buildConfigurationList = AA36A9BC2FCE14D10023BF62 /* Build configuration list for PBXProject "Screen time demo" */;
@@ -378,6 +438,7 @@
 				AA36A9C02FCE14D10023BF62 /* Screen time demo */,
 				B1C2D3E32FCE90010023BF62 /* StudyHallMonitor */,
 				C1C2D4022FCE90010023BF62 /* StudyHallShield */,
+				D1D2D5022FCE90010023BF62 /* StudyHallShieldUI */,
 				AA36A9CD2FCE14D50023BF62 /* Screen time demoTests */,
 				AA36A9D72FCE14D50023BF62 /* Screen time demoUITests */,
 			);
@@ -414,6 +475,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C1C2D40B2FCE90010023BF62 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1D2D5092FCE90010023BF62 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -458,6 +526,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1D2D5072FCE90010023BF62 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -480,6 +555,11 @@
 			isa = PBXTargetDependency;
 			target = C1C2D4022FCE90010023BF62 /* StudyHallShield */;
 			targetProxy = C1C2D4032FCE90010023BF62 /* PBXContainerItemProxy */;
+		};
+		D1D2D5062FCE90010023BF62 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D1D2D5022FCE90010023BF62 /* StudyHallShieldUI */;
+			targetProxy = D1D2D5032FCE90010023BF62 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -899,6 +979,60 @@
 			};
 			name = Release;
 		};
+		D1D2D50A2FCE90010023BF62 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StudyHallShieldUI/StudyHallShieldUI.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8X75449HTD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyHallShieldUI/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.davechengapps.screentimedemo.shieldui;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D1D2D50B2FCE90010023BF62 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StudyHallShieldUI/StudyHallShieldUI.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8X75449HTD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StudyHallShieldUI/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.davechengapps.screentimedemo.shieldui;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -952,6 +1086,15 @@
 			buildConfigurations = (
 				C1C2D40C2FCE90010023BF62 /* Debug */,
 				C1C2D40D2FCE90010023BF62 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1D2D50C2FCE90010023BF62 /* Build configuration list for PBXNativeTarget "StudyHallShieldUI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1D2D50A2FCE90010023BF62 /* Debug */,
+				D1D2D50B2FCE90010023BF62 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

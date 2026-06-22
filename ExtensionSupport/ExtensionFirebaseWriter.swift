@@ -51,15 +51,15 @@ enum ExtensionFirebaseWriter {
         source: OpenedWriteSource,
         context: ExtensionSessionContext? = ExtensionSessionContext.load()
     ) {
+        // Always attempt to queue the App Group fallback first — before any guard that could
+        // bail out early.  enqueuePendingOpenedFallback loads its own context, so it handles
+        // the nil case internally and is safe to call unconditionally.
+        ExtensionSessionBridge.enqueuePendingOpenedFallback()
+
         guard let context else {
-            print("[\(source.logLabel)] Missing session context — cannot write opened state")
+            print("[\(source.logLabel)] Missing session context — direct upload skipped; fallback queued if context was available")
             return
         }
-
-        // Always queue the App Group fallback first. The system may silently defer or drop
-        // background uploads from shield/monitor extensions, and the main app's foreground
-        // flush is the only guaranteed delivery path.
-        ExtensionSessionBridge.enqueuePendingOpenedFallback()
 
         guard shouldAttemptDirectUpload(context: context) else {
             print("[\(source.logLabel)] Direct upload recently attempted for \(context.userUID) — fallback queued")

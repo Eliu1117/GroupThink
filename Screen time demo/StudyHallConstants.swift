@@ -44,4 +44,35 @@ enum StudyHallConstants {
         backgroundURLSessionIdentifier,
         shieldBackgroundURLSessionIdentifier,
     ]
+
+    // GRO-11: user preference — defaults to true; opt-out stored in standard UserDefaults.
+    static let breakVoteNotificationsEnabledKey = "studyHall.breakVoteNotificationsEnabled"
+
+    // GRO-12: Downtime enforcement
+    /// DeviceActivity name for the nightly downtime schedule.
+    static let downtimeActivityName = "studyHall.downtime"
+    /// App Group key: encoded FamilyActivitySelection allowed during downtime.
+    static let downtimeAllowedAppsKey = "studyHall.downtimeAllowedApps"
+    /// App Group key: Bool — whether the user is currently inside an approved downtime override.
+    static let downtimeOverrideActiveKey = "studyHall.downtimeOverrideActive"
+    /// Named ManagedSettingsStore used exclusively for downtime shields.
+    static let downtimeStoreName = "com.davechengapps.screentimedemo.downtime"
+
+    // GRO-13 / GRO-32: Routine (formerly "Morning Routine")
+    // Raw string values are intentionally kept as "morningRoutine" / "studyHall.morningRoutine"
+    // to preserve backward-compat with existing DeviceActivitySchedule registrations and
+    // the named ManagedSettingsStore declared in entitlements.
+    /// DeviceActivity name for the routine schedule.
+    static let routineActivityName = "studyHall.morningRoutine"
+    /// DeviceActivity event name: fired when the user accumulates enough time in routine apps.
+    static let routineCompletedEventName = "routineCompleted"
+    /// App Group key: encoded FamilyActivitySelection for approved routine apps.
+    static let routineAppsKey = "studyHall.routineApps"
+    /// App Group key: RoutineUnlockMode raw value.
+    static let routineUnlockModeKey = "studyHall.routineUnlockMode"
+    /// App Group key: minutes needed for activity-based unlock.
+    static let routineUnlockMinutesKey = "studyHall.routineUnlockMinutes"
+    /// Named ManagedSettingsStore used exclusively for routine shields.
+    /// Value kept as "morningRoutine" — changing it requires entitlement + App Group updates.
+    static let routineStoreName = "com.davechengapps.screentimedemo.morningRoutine"
 }

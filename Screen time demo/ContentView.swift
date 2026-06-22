@@ -2,12 +2,16 @@
 //  ContentView.swift
 //  Screen time demo
 //
+//  Solo focus mode: block apps for a customisable duration with optional strict mode.
+//  GRO-36: duration picker (10–90 min), strict-mode toggle.
+//
 
 import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
-    private static let blockDurationSeconds = 600
+    // GRO-36: selectable durations matching the group session presets.
+    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
 
     @StateObject private var authManager = AuthorizationManager.shared
 
@@ -19,6 +23,10 @@ struct ContentView: View {
     @State private var timeRemaining = 0
     @State private var blockTask: Task<Void, Never>?
 
+    // GRO-36: new controls
+    @State private var selectedDurationMin = 25
+    @State private var strictMode = false
+
     private var selectedCount: Int {
         selection.applicationTokens.count + selection.categoryTokens.count
     }
@@ -28,7 +36,9 @@ struct ContentView: View {
     }
 
     private var canStartBlock: Bool {
-        authManager.isAuthorized && selectedCount > 0 && !isBlocking
+        guard authManager.isAuthorized, !isBlocking else { return false }
+        // In strict mode a blocklist is optional (everything is blocked).
+        return strictMode ? true : selectedCount > 0
     }
 
     var body: some View {
@@ -37,7 +47,16 @@ struct ContentView: View {
                 statusSection
 
                 VStack(spacing: 12) {
-                    permissionButton
+                    if !authManager.isAuthorized {
+                        permissionButton
+                    }
+
+                    // GRO-36: duration segmented picker
+                    durationPicker
+
+                    // GRO-36: strict mode toggle
+                    strictModeSection
+
                     chooseAppsButton
                     whitelistSection
                     startBlockButton
@@ -85,9 +104,19 @@ struct ContentView: View {
 
             if isBlocking {
                 VStack(spacing: 8) {
-                    Text("Blocking active")
-                        .font(.headline)
-                        .foregroundStyle(.orange)
+                    HStack(spacing: 6) {
+                        Text("Focus Active")
+                            .font(.headline)
+                            .foregroundStyle(.orange)
+                        if strictMode {
+                            Label("Strict", systemImage: "lock.shield.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.purple)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(.purple.opacity(0.12), in: Capsule())
+                        }
+                    }
                     Text(formattedTime(timeRemaining))
                         .font(.system(size: 48, weight: .bold, design: .rounded))
                         .monospacedDigit()
@@ -102,30 +131,61 @@ struct ContentView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    // MARK: - Duration picker (GRO-36)
+
+    private var durationPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Duration")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            Picker("Duration", selection: $selectedDurationMin) {
+                ForEach(Self.durationPresets, id: \.self) { mins in
+                    Text("\(mins)m").tag(mins)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(isBlocking)
+        }
+    }
+
+    // MARK: - Strict mode section (GRO-36)
+
+    private var strictModeSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: $strictMode) {
+                Label("Strict Mode", systemImage: "lock.shield.fill")
+                    .foregroundStyle(strictMode ? .purple : .primary)
+            }
+            .disabled(isBlocking)
+            if strictMode {
+                Text("All apps blocked except your whitelist. A blocklist is optional.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - Buttons
 
     private var permissionButton: some View {
         Button {
-            Task {
-                await authManager.requestAuthorization()
-            }
+            Task { await authManager.requestAuthorization() }
         } label: {
-            Label(
-                authManager.isAuthorized ? "Screen Time Permission Granted" : "Request Screen Time Permission",
-                systemImage: "hand.raised.fill"
-            )
-            .frame(maxWidth: .infinity)
+            Label("Request Screen Time Permission", systemImage: "hand.raised.fill")
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(authManager.isAuthorized)
     }
 
     private var chooseAppsButton: some View {
         Button {
             showPicker = true
         } label: {
-            Label("Choose Apps to Block", systemImage: "apps.iphone")
-                .frame(maxWidth: .infinity)
+            Label(
+                selectedCount > 0 ? "Apps to Block (\(selectedCount))" : "Choose Apps to Block",
+                systemImage: "apps.iphone"
+            )
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
         .disabled(!authManager.isAuthorized || isBlocking)
@@ -148,7 +208,7 @@ struct ContentView: View {
             .tint(.green)
             .disabled(!authManager.isAuthorized || isBlocking)
 
-            Text("Apps that stay available when a strict group session blocks everything else. Only individual apps count — categories are ignored.")
+            Text("Apps that stay available when strict mode blocks everything else. Only individual apps count — categories are ignored.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -159,11 +219,11 @@ struct ContentView: View {
         Button {
             startBlock()
         } label: {
-            Label("Start 10-Minute Block", systemImage: "timer")
+            Label("Start \(selectedDurationMin)-Min Focus Block", systemImage: "timer")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .tint(.orange)
+        .tint(strictMode ? .purple : .orange)
         .disabled(!canStartBlock)
     }
 
@@ -181,22 +241,27 @@ struct ContentView: View {
     // MARK: - Blocking
 
     private func startBlock() {
-        BlocklistStore.shared.selection = selection
-        BlockingManager.shared.block(selection: selection)
-        isBlocking = true
-        timeRemaining = Self.blockDurationSeconds
+        let durationSeconds = selectedDurationMin * 60
 
-        let endDate = Date().addingTimeInterval(TimeInterval(Self.blockDurationSeconds))
-        try? SessionActivityScheduler.startMonitoring(until: endDate, selection: selection)
+        if strictMode {
+            BlockingManager.shared.blockStrict(whitelist: whitelistSelection)
+        } else {
+            BlocklistStore.shared.selection = selection
+            BlockingManager.shared.block(selection: selection)
+        }
+        isBlocking = true
+        timeRemaining = durationSeconds
+
+        let endDate = Date().addingTimeInterval(TimeInterval(durationSeconds))
+        let monitorSelection = strictMode ? whitelistSelection : selection
+        try? SessionActivityScheduler.startMonitoring(until: endDate, selection: monitorSelection)
 
         blockTask?.cancel()
         blockTask = Task {
-            var remaining = Self.blockDurationSeconds
+            var remaining = durationSeconds
             while remaining > 0 {
                 if Task.isCancelled { return }
-                await MainActor.run {
-                    timeRemaining = remaining
-                }
+                await MainActor.run { timeRemaining = remaining }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if Task.isCancelled { return }
                 remaining -= 1

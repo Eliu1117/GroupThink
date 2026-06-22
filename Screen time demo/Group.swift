@@ -32,6 +32,35 @@ struct Group: Identifiable, Equatable, Hashable {
     /// When true, only the group creator can start a new session.
     let creatorOnlyStart: Bool
 
+    // MARK: - Session duration (GRO-28 / GRO-33)
+    /// Duration (minutes) used in the most recent session for this group.
+    /// Pre-fills the session-start picker; defaults to 25 if no session has ever been started.
+    /// Firestore key: "lastSessionDurationMin".
+    let lastSessionDurationMin: Int
+
+    // MARK: - Break voting settings (GRO-11)
+    /// Master toggle: when false, break voting is disabled for all sessions in this group.
+    let breakVotingEnabled: Bool
+    /// How long the voting window stays open in seconds (default 120).
+    let breakWindowSeconds: Int
+    /// Cooldown as a percentage of total session duration before another vote can start
+    /// (default 20 — i.e. 20 % of 25 min = 5 min cooldown). Stored as an integer 1–100.
+    let breakCooldownPercent: Int
+    /// True when the most recent session ended via a passed break vote.
+    /// The next session is created with `penaltyLock = true` and this flag is cleared.
+    /// This enforces the every-other-session rule (GRO-11).
+    let breakPassedLastSession: Bool
+
+    // MARK: - Downtime settings (GRO-12)
+    /// When true, members are encouraged (and eventually enforced) to configure a nightly
+    /// downtime schedule. The group feature flag lives here; the schedule itself is per-user.
+    let downtimeEnabled: Bool
+
+    // MARK: - Routine settings (GRO-13 / GRO-32)
+    /// When true, members are expected to configure a routine schedule.
+    /// NOTE: Firestore field key remains "morningRoutineEnabled" for backward compatibility.
+    let routineEnabled: Bool
+
     init?(
         id: String,
         document: DocumentSnapshot
@@ -58,6 +87,14 @@ struct Group: Identifiable, Equatable, Hashable {
         self.requireBlocklist = data["requireBlocklist"] as? Bool ?? true
         self.allowLateJoin = data["allowLateJoin"] as? Bool ?? true
         self.creatorOnlyStart = data["creatorOnlyStart"] as? Bool ?? true
+        self.breakVotingEnabled = data["breakVotingEnabled"] as? Bool ?? false
+        self.breakWindowSeconds = data["breakWindowSeconds"] as? Int ?? 120
+        self.breakCooldownPercent = data["breakCooldownPercent"] as? Int ?? 20
+        self.breakPassedLastSession = data["breakPassedLastSession"] as? Bool ?? false
+        self.lastSessionDurationMin = data["lastSessionDurationMin"] as? Int ?? 25
+        self.downtimeEnabled = data["downtimeEnabled"] as? Bool ?? false
+        // Reads "morningRoutineEnabled" from Firestore; Swift property is routineEnabled (GRO-32).
+        self.routineEnabled = data["morningRoutineEnabled"] as? Bool ?? false
     }
 
     init(
@@ -71,7 +108,14 @@ struct Group: Identifiable, Equatable, Hashable {
         strictMode: Bool = false,
         requireBlocklist: Bool = true,
         allowLateJoin: Bool = true,
-        creatorOnlyStart: Bool = true
+        creatorOnlyStart: Bool = true,
+        breakVotingEnabled: Bool = false,
+        breakWindowSeconds: Int = 120,
+        breakCooldownPercent: Int = 20,
+        breakPassedLastSession: Bool = false,
+        lastSessionDurationMin: Int = 25,
+        downtimeEnabled: Bool = false,
+        routineEnabled: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -84,6 +128,13 @@ struct Group: Identifiable, Equatable, Hashable {
         self.requireBlocklist = requireBlocklist
         self.allowLateJoin = allowLateJoin
         self.creatorOnlyStart = creatorOnlyStart
+        self.breakVotingEnabled = breakVotingEnabled
+        self.breakWindowSeconds = breakWindowSeconds
+        self.breakCooldownPercent = breakCooldownPercent
+        self.breakPassedLastSession = breakPassedLastSession
+        self.lastSessionDurationMin = lastSessionDurationMin
+        self.downtimeEnabled = downtimeEnabled
+        self.routineEnabled = routineEnabled
     }
 
     /// Generates a short, human-friendly invite code (ambiguous characters omitted).

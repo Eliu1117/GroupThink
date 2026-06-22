@@ -72,6 +72,24 @@ final class GroupDetailViewModel: ObservableObject {
         }
     }
 
+    /// Persists a single Int setting (creator only — enforced in GroupService).
+    func updateIntSetting(groupID: String, requesterUID: String, key: String, value: Int) async {
+        isUpdatingSettings = true
+        defer { isUpdatingSettings = false }
+
+        do {
+            try await GroupService.shared.updateGroupSetting(
+                groupID: groupID,
+                requesterUID: requesterUID,
+                key: key,
+                value: value
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[Groups] Int setting update failed: \(error.localizedDescription)")
+        }
+    }
+
     func loadMembers(for group: Group, knownNames: [String: String] = [:]) async {
         isLoading = true
         errorMessage = nil

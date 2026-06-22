@@ -84,7 +84,11 @@ final class SessionService {
         groupID: String,
         hostUID: String,
         durationMin: Int = 25,
-        strictMode: Bool = false
+        strictMode: Bool = false,
+        breakVotingEnabled: Bool = false,
+        breakWindowSeconds: Int = 120,
+        breakCooldownMinutes: Int = 0,
+        penaltyLock: Bool = false    // GRO-11: every-other-session rule
     ) async throws -> String {
         let ref = activeSessionRef(for: groupID)
 
@@ -107,10 +111,16 @@ final class SessionService {
             "participants": [
                 hostUID: ["state": ParticipantState.focused.rawValue],
             ],
+            // GRO-11: break voting snapshot (copied from group settings at creation time)
+            "breakVotingEnabled": breakVotingEnabled,
+            "breakWindowSeconds": breakWindowSeconds,
+            "breakCooldownMinutes": breakCooldownMinutes,
+            // GRO-11 every-other-session: inherits cross-session penalty from the group flag.
+            "penaltyLock": penaltyLock,
         ]
 
         try await ref.setData(data)
-        print("[Firestore Session] Started session \(sessionID) in group \(groupID) (strict: \(strictMode))")
+        print("[Firestore Session] Started session \(sessionID) in group \(groupID) (strict: \(strictMode), breakVoting: \(breakVotingEnabled))")
         return sessionID
     }
 
@@ -217,6 +227,57 @@ final class SessionService {
             }
         }
         return parsed
+    }
+
+    // MARK: - Break lifecycle (GRO-35)
+
+    private static let breakDurationSec = 600
+
+    /// Writes the break start timestamp to the session document.
+    /// Only the host may call this; other clients detect the break via their Firestore listener.
+    func startBreak(groupID: String, hostUID: String) async throws {
+        let ref = activeSessionRef(for: groupID)
+        let snapshot = try await ref.getDocument()
+        guard let session = StudySession(document: snapshot) else { throw SessionServiceError.sessionNotFound }
+        guard session.hostUid == hostUID else { throw SessionServiceError.notHost }
+
+        try await ref.updateData([
+            "breakStartedAt": FieldValue.serverTimestamp(),
+            "breakDurationSec": Self.breakDurationSec,
+            "breakPausedSecondsRemaining": 0,
+        ])
+        print("[Break] Break started in group \(groupID)")
+    }
+
+    /// Pauses the break countdown, freezing it at `secondsRemaining`.
+    func pauseBreak(groupID: String, hostUID: String, secondsRemaining: Int) async throws {
+        let ref = activeSessionRef(for: groupID)
+        let snapshot = try await ref.getDocument()
+        guard let session = StudySession(document: snapshot) else { throw SessionServiceError.sessionNotFound }
+        guard session.hostUid == hostUID else { throw SessionServiceError.notHost }
+
+        try await ref.updateData([
+            "breakPausedAt": FieldValue.serverTimestamp(),
+            "breakPausedSecondsRemaining": max(0, secondsRemaining),
+        ])
+        print("[Break] Break paused at \(secondsRemaining)s in group \(groupID)")
+    }
+
+    /// Resumes a paused break, writing a new start timestamp and duration.
+    func resumeBreak(groupID: String, hostUID: String, secondsRemaining: Int) async throws {
+        let ref = activeSessionRef(for: groupID)
+        let snapshot = try await ref.getDocument()
+        guard let session = StudySession(document: snapshot) else { throw SessionServiceError.sessionNotFound }
+        guard session.hostUid == hostUID else { throw SessionServiceError.notHost }
+
+        var update: [String: Any] = [
+            "breakStartedAt": FieldValue.serverTimestamp(),
+            "breakDurationSec": max(1, secondsRemaining),
+            "breakPausedSecondsRemaining": 0,
+        ]
+        update["breakPausedAt"] = FieldValue.delete()
+        try await ref.updateData(update)
+        print("[Break] Break resumed with \(secondsRemaining)s in group \(groupID)")
     }
 
     // MARK: - End

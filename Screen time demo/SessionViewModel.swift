@@ -25,6 +25,14 @@ final class SessionViewModel: ObservableObject {
     @Published private(set) var creatorOnlyStart: Bool = true
     /// Published when a session finishes; drives the animated summary sheet.
     @Published var sessionSummary: SessionSummary?
+    /// GRO-11: drives the break vote bottom sheet.
+    @Published var showBreakVoteSheet = false
+    /// GRO-35: true while the group-approved break is in progress (running or paused).
+    @Published private(set) var isOnBreak: Bool = false
+    /// GRO-35: true while the break is paused by the host.
+    @Published private(set) var isBreakPaused: Bool = false
+    /// GRO-35: seconds remaining in the current break window.
+    @Published private(set) var breakSecondsRemaining: Int = 0
 
     private var groupID: String?
     private var currentUID: String?
@@ -37,15 +45,29 @@ final class SessionViewModel: ObservableObject {
     /// Prevents duplicate summaries when multiple end signals fire for one session.
     private var lastSummarizedSessionID: String?
 
+    // GRO-11: tracks vote IDs to avoid duplicate side-effects on repeated Firestore snapshots.
+    private var observedBreakVoteID: String?
+    private var resolvedBreakVoteID: String?
+    private var breakVoteExpiryTask: Task<Void, Never>?
+    private var breakCountdownTask: Task<Void, Never>?
+    private static let breakDurationSec = 600   // 10-minute break
+
     // MARK: - Group settings
     private var strictMode: Bool = false
     private var requireBlocklist: Bool = true
     private var allowLateJoin: Bool = true
     private var groupName: String = "your group"
+    // GRO-11: copied into the session document at creation time
+    private var breakVotingEnabled: Bool = false
+    private var breakWindowSeconds: Int = 120
+    private var breakCooldownPercent: Int = 20
+    // GRO-11: every-other-session penalty flag read from the Group document.
+    private var breakPassedLastSession: Bool = false
 
     deinit {
         sessionListener?.remove()
         countdownTask?.cancel()
+        breakVoteExpiryTask?.cancel()
     }
 
     // MARK: - Configuration
@@ -64,6 +86,16 @@ final class SessionViewModel: ObservableObject {
         didApplyBlocking = false
         previousStatus = nil
         scheduledEndDate = nil
+        showBreakVoteSheet = false
+        breakVoteExpiryTask?.cancel()
+        breakVoteExpiryTask = nil
+        breakCountdownTask?.cancel()
+        breakCountdownTask = nil
+        observedBreakVoteID = nil
+        resolvedBreakVoteID = nil
+        isOnBreak = false
+        isBreakPaused = false
+        breakSecondsRemaining = 0
 
         guard currentUID != nil else { return }
 
@@ -91,6 +123,12 @@ final class SessionViewModel: ObservableObject {
         allowLateJoin = group.allowLateJoin
         creatorOnlyStart = group.creatorOnlyStart
         groupName = group.name
+        // GRO-11: break voting settings (snapshotted into the session at creation)
+        breakVotingEnabled = group.breakVotingEnabled
+        breakWindowSeconds = group.breakWindowSeconds
+        breakCooldownPercent = group.breakCooldownPercent
+        // GRO-11: read flag — only acted upon in createSession, never mid-session.
+        breakPassedLastSession = group.breakPassedLastSession
     }
 
     /// GRO-21: Seeds display names from the pre-fetched member roster.
@@ -133,17 +171,66 @@ final class SessionViewModel: ObservableObject {
         defer { isSubmitting = false }
 
         do {
+            // Cooldown in minutes: breakCooldownPercent % of session duration, min 1 min.
+            let cooldownMinutes = max(1, Int(ceil(Double(durationMin) * Double(breakCooldownPercent) / 100.0)))
+            // GRO-11: if the previous session ended via a passed break vote, start this one locked.
+            let initialPenaltyLock = breakPassedLastSession
             _ = try await SessionService.shared.createSession(
                 groupID: groupID,
                 hostUID: currentUID,
                 durationMin: durationMin,
-                strictMode: strictMode
+                strictMode: strictMode,
+                breakVotingEnabled: breakVotingEnabled,
+                breakWindowSeconds: breakWindowSeconds,
+                breakCooldownMinutes: cooldownMinutes,
+                penaltyLock: initialPenaltyLock
             )
+            let capturedGroupID = groupID
+            // GRO-33: persist last-used duration so all members' pickers stay in sync.
+            Task { try? await GroupService.shared.updateLastSessionDuration(groupID: capturedGroupID, durationMin: durationMin) }
+            // GRO-11: consume the cross-session penalty flag now that the new session has it.
+            if initialPenaltyLock {
+                Task { try? await GroupService.shared.clearBreakPenalty(groupID: capturedGroupID) }
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
             print("[Firestore Session] Error creating session: \(error.localizedDescription)")
             return false
+        }
+    }
+
+    // MARK: - Break voting (GRO-11)
+
+    /// Initiates a break vote. All gate conditions are checked on `session.canInitiateBreakVote`.
+    func initiateBreakVote() async {
+        guard let groupID, let currentUID, let session, session.canInitiateBreakVote else { return }
+        do {
+            try await BreakVoteService.shared.initiateVote(
+                groupID: groupID,
+                initiatorUID: currentUID,
+                windowSeconds: session.breakWindowSeconds
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[BreakVote] Error initiating: \(error.localizedDescription)")
+        }
+    }
+
+    /// Casts the current user's vote on the in-flight break vote.
+    func castBreakVote(inFavor: Bool) async {
+        guard let groupID, let currentUID, let session else { return }
+        let total = session.participants.count
+        do {
+            try await BreakVoteService.shared.castVote(
+                groupID: groupID,
+                voterUID: currentUID,
+                inFavor: inFavor,
+                totalParticipants: total
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[BreakVote] Error casting vote: \(error.localizedDescription)")
         }
     }
 
@@ -216,18 +303,22 @@ final class SessionViewModel: ObservableObject {
 
     /// Responds to app lifecycle changes during an active session.
     func handleScenePhase(_ phase: ScenePhase) {
-        guard let session, session.status == .active, isInLobby else { return }
+        guard let session, session.status == .active else { return }
 
         switch phase {
         case .background:
+            guard isInLobby else { return }
             print("[Firestore Presence] App entered background — marking left")
             Task { await updatePresence(.left) }
 
         case .active:
             Task {
                 await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: false)
+                // Flush pending opened events regardless of isInLobby: the Firestore snapshot
+                // may be transiently stale when the scene becomes active, so we must not
+                // skip a pending opened event just because isInLobby is briefly false.
                 let flushedOpened = await flushPendingOpenedEvents()
-                if !flushedOpened, myState == .left {
+                if !flushedOpened, isInLobby, myState == .left {
                     print("[Firestore Presence] App became active — restoring focused")
                     await updatePresence(.focused)
                 }
@@ -309,6 +400,9 @@ final class SessionViewModel: ObservableObject {
 
     // MARK: - Computed
 
+    /// Expose the authenticated UID so views can display per-user state (e.g. break vote).
+    var uid: String? { currentUID }
+
     var isHost: Bool {
         guard let session, let currentUID else { return false }
         return session.hostUid == currentUID
@@ -373,6 +467,10 @@ final class SessionViewModel: ObservableObject {
                 Task {
                     await prepareActiveSession(session, statusChanged: statusChanged)
                 }
+                // GRO-11: react to break vote state changes on every snapshot.
+                handleBreakVoteUpdate(session)
+                // GRO-35: sync break countdown from Firestore timestamps (navigation-safe).
+                syncBreakState(from: session)
 
             case .ended:
                 handleSessionEnd(for: session)
@@ -479,12 +577,14 @@ final class SessionViewModel: ObservableObject {
     }
 
     /// Returns the selection to use when registering the openedBlockedApp DeviceActivity event.
-    /// Strict mode: empty — the shield extension handles detection; using the blocklist here
-    /// would fire warnings for whitelisted apps whose tokens also appear on the blocklist.
-    /// Normal mode: the blocklist minus the whitelist.
+    /// Both strict and normal mode use blocklist-minus-whitelist.
+    ///
+    /// Previously, strict mode returned an empty selection under the assumption that the shield
+    /// extension would handle detection, but that over-corrected and stopped all attempt tracking.
+    /// `effectiveBlockSelection` already subtracts whitelisted tokens, so it is safe for both modes:
+    /// a whitelisted app that also appears on the blocklist will NOT trigger the event.
     private func effectiveMonitorSelection(for session: StudySession) -> FamilyActivitySelection {
-        guard !session.strictMode else { return FamilyActivitySelection() }
-        return effectiveBlockSelection(whitelist: BlocklistStore.shared.whitelistSelection)
+        effectiveBlockSelection(whitelist: BlocklistStore.shared.whitelistSelection)
     }
 
     /// GRO-21: Detects participant UIDs not yet in `participantNames` and fetches
@@ -531,6 +631,190 @@ final class SessionViewModel: ObservableObject {
             await ExtensionAuthTokenBridge.persistIDTokenForExtension(forcingRefresh: true)
         }
         await flushPendingOpenedEvents()
+    }
+
+    // MARK: - Break vote lifecycle (GRO-11)
+
+    private func handleBreakVoteUpdate(_ session: StudySession) {
+        if let vote = session.activeBreakVote, vote.isPending {
+            guard observedBreakVoteID != vote.id else { return }
+            observedBreakVoteID = vote.id
+            showBreakVoteSheet = true
+
+            // Post local notification unless the user opted out.
+            let notifEnabled = UserDefaults.standard.object(forKey: StudyHallConstants.breakVoteNotificationsEnabledKey) as? Bool ?? true
+            if notifEnabled {
+                let name = participantNames[vote.initiatorUid] ?? "A member"
+                PushNotificationService.shared.postBreakVoteStartedNotification(
+                    groupName: groupName,
+                    initiatorName: name
+                )
+            }
+
+            scheduleBreakVoteExpiry(voteID: vote.id, deadline: vote.deadline)
+
+        } else if let vote = session.activeBreakVote, !vote.isPending {
+            // Vote just resolved — cancel the expiry task (no longer needed).
+            breakVoteExpiryTask?.cancel()
+            breakVoteExpiryTask = nil
+
+            // Guard: only process resolution side-effects once per vote ID.
+            if resolvedBreakVoteID != vote.id {
+                resolvedBreakVoteID = vote.id
+
+                if vote.status == .passed {
+                    // Lift shields and stop the focus countdown immediately on all devices (GRO-11).
+                    if didApplyBlocking {
+                        BlockingManager.shared.clear()
+                        didApplyBlocking = false
+                        print("[BreakVote] Shields lifted — break passed")
+                    }
+                    // Also stop DeviceActivity tracking so app-opens during break aren't penalised.
+                    SessionActivityScheduler.stopMonitoring()
+                    stopCountdown()
+                    Task { await updatePresence(.break) }
+
+                    // GRO-35: Host writes breakStartedAt to Firestore; all clients detect it via listener.
+                    if isHost, let gid = groupID {
+                        Task { try? await SessionService.shared.startBreak(groupID: gid, hostUID: currentUID ?? "") }
+                    }
+
+                    // GRO-11: flag the group so the NEXT session starts penalty-locked.
+                    if let gid = groupID {
+                        Task { try? await GroupService.shared.markBreakPassed(groupID: gid) }
+                    }
+                }
+            }
+
+            // Dismiss the sheet after 2 s so users can read the result banner.
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                showBreakVoteSheet = false
+            }
+
+        } else {
+            // No vote in flight.
+            showBreakVoteSheet = false
+        }
+    }
+
+    // MARK: - Break state (GRO-35)
+
+    /// Computed break time formatted as "M:SS" for display in SessionView.
+    var formattedBreakCountdown: String {
+        let m = breakSecondsRemaining / 60
+        let s = breakSecondsRemaining % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    /// Actions exposed to the view (host only).
+    func pauseBreak() async {
+        guard isHost, let groupID, let currentUID else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await SessionService.shared.pauseBreak(
+                groupID: groupID,
+                hostUID: currentUID,
+                secondsRemaining: breakSecondsRemaining
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func resumeBreak() async {
+        guard isHost, let groupID, let currentUID else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await SessionService.shared.resumeBreak(
+                groupID: groupID,
+                hostUID: currentUID,
+                secondsRemaining: breakSecondsRemaining
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Syncs the local break state with the Firestore session snapshot.
+    /// Called on every `.active` snapshot so navigation away/back or app restart
+    /// never resets the countdown (GRO-35).
+    private func syncBreakState(from session: StudySession) {
+        guard session.breakIsActive else {
+            if isOnBreak { stopBreakCountdown() }
+            return
+        }
+
+        isOnBreak = true
+        isBreakPaused = session.breakIsPaused
+
+        let firestoreRemaining = session.computedBreakSecondsRemaining
+
+        if session.breakIsPaused {
+            // Paused: freeze the display value and stop the local tick.
+            breakSecondsRemaining = firestoreRemaining
+            stopLocalBreakTick()
+        } else {
+            // Running: seed the value if not already ticking, or correct significant drift.
+            if breakCountdownTask == nil {
+                breakSecondsRemaining = firestoreRemaining
+                startLocalBreakTick()
+            } else {
+                let drift = abs(breakSecondsRemaining - firestoreRemaining)
+                if drift > 3 { breakSecondsRemaining = firestoreRemaining }
+            }
+
+            // Host-side expiry check (other clients wait for the host to call endSession).
+            if firestoreRemaining == 0 && isHost {
+                Task { await endSession() }
+            }
+        }
+    }
+
+    /// Starts a local 1-second tick task for smooth UI rendering.
+    /// The true countdown value is re-anchored from Firestore on each snapshot.
+    private func startLocalBreakTick() {
+        breakCountdownTask?.cancel()
+        breakCountdownTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                await MainActor.run {
+                    if self.breakSecondsRemaining > 0 {
+                        self.breakSecondsRemaining -= 1
+                    }
+                    // Expiry is handled by syncBreakState — don't end session from the tick task.
+                }
+            }
+        }
+    }
+
+    private func stopLocalBreakTick() {
+        breakCountdownTask?.cancel()
+        breakCountdownTask = nil
+    }
+
+    private func stopBreakCountdown() {
+        stopLocalBreakTick()
+        isOnBreak = false
+        isBreakPaused = false
+        breakSecondsRemaining = 0
+    }
+
+    /// Schedules a task that calls `expireVote` when the voting window closes.
+    private func scheduleBreakVoteExpiry(voteID: String, deadline: Date) {
+        breakVoteExpiryTask?.cancel()
+        let delay = max(0, deadline.timeIntervalSinceNow)
+        let capturedGroupID = groupID ?? ""
+
+        breakVoteExpiryTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            print("[BreakVote] Window expired for vote \(voteID)")
+            try? await BreakVoteService.shared.expireVote(groupID: capturedGroupID, voteID: voteID)
+        }
     }
 
     private func persistActiveSessionContext(for session: StudySession) {
@@ -623,6 +907,7 @@ final class SessionViewModel: ObservableObject {
     /// Stops countdown, DeviceActivity monitoring, App Group context, and local shields together.
     private func haltLocalSessionInfrastructure(reason: String) {
         stopCountdown()
+        stopBreakCountdown()
         secondsRemaining = 0
         scheduledEndDate = nil
         SessionContextStore.shared.clearAll()
@@ -640,6 +925,7 @@ final class SessionViewModel: ObservableObject {
         sessionListener = nil
         countdownTask?.cancel()
         countdownTask = nil
+        stopLocalBreakTick()
     }
 
     private func finalizeSessionTeardown(clearSessionDocument: Bool) {
