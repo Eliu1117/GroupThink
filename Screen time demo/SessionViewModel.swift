@@ -302,12 +302,17 @@ final class SessionViewModel: ObservableObject {
     }
 
     /// Responds to app lifecycle changes during an active session.
+    ///
+    /// Note: flushing pending "opened" events on `.active` is intentionally NOT gated behind
+    /// `session?.status == .active`. A user can open several blocked apps in strict mode and
+    /// not return to this screen until well after the session has ended (or this group's
+    /// listener has already cleared `session`) — if the flush only ran while a session looked
+    /// active, those queued attempts would never make it to Firestore and the group would
+    /// never see that the apps were opened.
     func handleScenePhase(_ phase: ScenePhase) {
-        guard let session, session.status == .active else { return }
-
         switch phase {
         case .background:
-            guard isInLobby else { return }
+            guard let session, session.status == .active, isInLobby else { return }
             print("[Firestore Presence] App entered background — marking left")
             Task { await updatePresence(.left) }
 
@@ -318,7 +323,7 @@ final class SessionViewModel: ObservableObject {
                 // may be transiently stale when the scene becomes active, so we must not
                 // skip a pending opened event just because isInLobby is briefly false.
                 let flushedOpened = await flushPendingOpenedEvents()
-                if !flushedOpened, isInLobby, myState == .left {
+                if !flushedOpened, let session, session.status == .active, isInLobby, myState == .left {
                     print("[Firestore Presence] App became active — restoring focused")
                     await updatePresence(.focused)
                 }
@@ -333,31 +338,11 @@ final class SessionViewModel: ObservableObject {
     }
 
     /// Flushes extension-queued `opened` events from the App Group into Firestore.
+    /// Delegates to the app-wide flusher (see `PendingOpenedEventFlusher`) so behavior is
+    /// identical whether triggered from this screen or from the global scene-phase observer.
     @discardableResult
     func flushPendingOpenedEvents() async -> Bool {
-        let events = SessionContextStore.shared.drainPendingOpenedEvents()
-        guard !events.isEmpty else { return false }
-
-        for event in events {
-            do {
-                try await SessionService.shared.markOpened(
-                    groupID: event.groupID,
-                    userUID: event.userUID
-                )
-                print("[Firestore Presence] Flushed opened event for \(event.userUID)")
-            } catch {
-                SessionContextStore.shared.enqueuePendingOpened(
-                    for: ActiveSessionContext(
-                        groupID: event.groupID,
-                        sessionID: event.sessionID,
-                        userUID: event.userUID
-                    )
-                )
-                print("[Firestore Presence] Failed to flush opened event — re-queued: \(error.localizedDescription)")
-            }
-        }
-
-        return true
+        await PendingOpenedEventFlusher.flush()
     }
 
     func endSession() async -> Bool {

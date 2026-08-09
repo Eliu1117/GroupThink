@@ -243,6 +243,13 @@ struct ContentView: View {
     private func startBlock() {
         let durationSeconds = selectedDurationMin * 60
 
+        // Persist the strict-mode flag to the shared App Group so StudyHallMonitor applies
+        // the correct shield policy when intervalDidStart fires (it fires almost immediately
+        // since the schedule's interval start is "now"). Without this, the extension falls
+        // back to treating the session as non-strict and re-shields using only the personal
+        // blocklist, silently downgrading strict mode to blocklist-only enforcement.
+        SessionContextStore.shared.setStrictMode(strictMode)
+
         if strictMode {
             BlockingManager.shared.blockStrict(whitelist: whitelistSelection)
         } else {
@@ -253,7 +260,10 @@ struct ContentView: View {
         timeRemaining = durationSeconds
 
         let endDate = Date().addingTimeInterval(TimeInterval(durationSeconds))
-        let monitorSelection = strictMode ? whitelistSelection : selection
+        // The "openedBlockedApp" backup event must track apps that are actually shielded.
+        // In strict mode that's the personal blocklist minus the whitelist (never the
+        // whitelist itself — the whitelist is what's ALLOWED, not blocked).
+        let monitorSelection = strictMode ? effectiveMonitorSelection() : selection
         try? SessionActivityScheduler.startMonitoring(until: endDate, selection: monitorSelection)
 
         blockTask?.cancel()
@@ -269,6 +279,7 @@ struct ContentView: View {
             await MainActor.run {
                 BlockingManager.shared.clear()
                 SessionActivityScheduler.stopMonitoring()
+                SessionContextStore.shared.setStrictMode(false)
                 isBlocking = false
                 timeRemaining = 0
                 blockTask = nil
@@ -281,8 +292,19 @@ struct ContentView: View {
         blockTask = nil
         SessionActivityScheduler.stopMonitoring()
         BlockingManager.shared.clear()
+        SessionContextStore.shared.setStrictMode(false)
         isBlocking = false
         timeRemaining = 0
+    }
+
+    /// Personal blocklist with whitelist tokens subtracted — mirrors the same logic used for
+    /// group sessions so a whitelisted app that also happens to be on the blocklist never
+    /// triggers the backup "opened" event.
+    private func effectiveMonitorSelection() -> FamilyActivitySelection {
+        var effective = selection
+        effective.applicationTokens.subtract(whitelistSelection.applicationTokens)
+        effective.categoryTokens.subtract(whitelistSelection.categoryTokens)
+        return effective
     }
 
     private func formattedTime(_ seconds: Int) -> String {

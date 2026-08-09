@@ -20,6 +20,39 @@ struct PendingOpenedEvent: Codable, Equatable {
     let recordedAt: Date
 }
 
+/// Drains the App Group's queue of extension-reported "opened blocked app" events into
+/// Firestore. This is intentionally decoupled from any specific `SessionViewModel`/group
+/// screen: a user can open several blocked apps in strict mode and not navigate back into
+/// that group's detail screen until long after the session ends (or from a completely
+/// different tab), so relying on a single view's lifecycle to trigger the flush means queued
+/// attempts can sit unflushed indefinitely. Call `flush()` from an app-wide scene-phase
+/// observer so it fires no matter what screen the user returns to.
+enum PendingOpenedEventFlusher {
+    @discardableResult
+    static func flush() async -> Bool {
+        let events = SessionContextStore.shared.drainPendingOpenedEvents()
+        guard !events.isEmpty else { return false }
+
+        for event in events {
+            do {
+                try await SessionService.shared.markOpened(groupID: event.groupID, userUID: event.userUID)
+                print("[Firestore Presence] Flushed opened event for \(event.userUID)")
+            } catch {
+                SessionContextStore.shared.enqueuePendingOpened(
+                    for: ActiveSessionContext(
+                        groupID: event.groupID,
+                        sessionID: event.sessionID,
+                        userUID: event.userUID
+                    )
+                )
+                print("[Firestore Presence] Failed to flush opened event — re-queued: \(error.localizedDescription)")
+            }
+        }
+
+        return true
+    }
+}
+
 final class SessionContextStore {
     static let shared = SessionContextStore()
 
