@@ -9,15 +9,17 @@
 //  ShieldActionDelegate.handle(action:) is an explicit user interaction callback
 //  that has no caching and fires synchronously for every shield dismissal.
 //
+//  iOS 26 SDK note: these overrides take ApplicationToken / ActivityCategoryToken /
+//  WebDomainToken (not Application / ActivityCategory / WebDomain).
+//
 
 import ManagedSettings
-import ManagedSettingsUI
 
 final class StudyHallShieldConfiguration: ShieldActionDelegate {
 
     override func handle(
         action: ShieldAction,
-        for application: Application,
+        for application: ApplicationToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         reportOpenedInstantly(origin: "application")
@@ -26,8 +28,7 @@ final class StudyHallShieldConfiguration: ShieldActionDelegate {
 
     override func handle(
         action: ShieldAction,
-        for application: Application,
-        in category: ActivityCategory,
+        for category: ActivityCategoryToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         // Strict mode: apps are blocked by category (.all except whitelist).
@@ -37,7 +38,7 @@ final class StudyHallShieldConfiguration: ShieldActionDelegate {
 
     override func handle(
         action: ShieldAction,
-        for webDomain: WebDomain,
+        for webDomain: WebDomainToken,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         reportOpenedInstantly(origin: "webDomain")
