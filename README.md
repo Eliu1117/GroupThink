@@ -1,4 +1,4 @@
-# Study Hall
+# GroupThink
 
 A native iOS social productivity app built to help friend groups study together through shared accountability. Study Hall leverages Apple's Screen Time APIs to temporarily block distracting apps during active group sessions.
 
