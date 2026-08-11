@@ -43,9 +43,13 @@ struct GroupDetailView: View {
     /// GRO-28: duration used for the NEXT session created from this screen.
     /// Seeded from currentGroup.defaultSessionDurationMin and stays in sync with live group changes.
     @State private var sessionDurationMin: Int = 25
+    /// GRO-40: number of consecutive (back-to-back / Pomodoro) sessions for the NEXT cycle.
+    /// 1 = a plain single session; 2+ inserts automatic breaks between sub-sessions.
+    @State private var totalSessionsInCycle: Int = 1
 
     /// Preset durations shown in the session-start picker (minutes).
-    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
+    // TODO: remove the "1" preset — added only for quick testing of session-end/cycle flows.
+    private static let durationPresets = [1, 10, 15, 20, 25, 30, 45, 60, 90]
 
     /// Live group doc when available; falls back to the pushed snapshot.
     private var currentGroup: Group {
@@ -211,13 +215,36 @@ struct GroupDetailView: View {
                         }
                         .pickerStyle(.segmented)
                     }
+
+                    // GRO-40: back-to-back (Pomodoro) session count. 1 = single session.
+                    Stepper(value: $totalSessionsInCycle, in: 1...8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Consecutive Sessions")
+                                .font(.subheadline.weight(.medium))
+                            Text(
+                                totalSessionsInCycle > 1
+                                    ? "\(totalSessionsInCycle) sessions back-to-back, with automatic breaks in between"
+                                    : "Single session — no automatic break cycle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Button {
-                    Task { await sessionViewModel.createSession(durationMin: sessionDurationMin) }
+                    Task {
+                        await sessionViewModel.createSession(
+                            durationMin: sessionDurationMin,
+                            totalSessionsInCycle: totalSessionsInCycle
+                        )
+                    }
                 } label: {
-                    Label("Start Study Hall", systemImage: "play.circle.fill")
-                        .frame(maxWidth: .infinity)
+                    Label(
+                        totalSessionsInCycle > 1 ? "Start Pomodoro Cycle" : "Start Study Hall",
+                        systemImage: "play.circle.fill"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canStartSession || sessionViewModel.isSubmitting)
@@ -226,6 +253,8 @@ struct GroupDetailView: View {
                     Text("Only the group creator can start a session.")
                 } else if currentGroup.strictMode {
                     Text("Strict mode is on: all apps will be blocked except each member's whitelist.")
+                } else if totalSessionsInCycle > 1 {
+                    Text("Host \(totalSessionsInCycle) back-to-back \(sessionDurationMin)-minute sessions, with automatic breaks between them (every 4th is a long break).")
                 } else {
                     Text("Host a \(sessionDurationMin)-minute focused session for this group.")
                 }

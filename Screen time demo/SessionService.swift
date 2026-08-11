@@ -88,7 +88,8 @@ final class SessionService {
         breakVotingEnabled: Bool = false,
         breakWindowSeconds: Int = 120,
         breakCooldownMinutes: Int = 0,
-        penaltyLock: Bool = false    // GRO-11: every-other-session rule
+        penaltyLock: Bool = false,   // GRO-11: every-other-session rule
+        totalSessionsInCycle: Int = 1 // GRO-40: back-to-back (Pomodoro) session count
     ) async throws -> String {
         let ref = activeSessionRef(for: groupID)
 
@@ -102,6 +103,7 @@ final class SessionService {
         }
 
         let sessionID = UUID().uuidString
+        let cycleID = UUID().uuidString
         let data: [String: Any] = [
             "sessionId": sessionID,
             "status": SessionStatus.lobby.rawValue,
@@ -117,11 +119,61 @@ final class SessionService {
             "breakCooldownMinutes": breakCooldownMinutes,
             // GRO-11 every-other-session: inherits cross-session penalty from the group flag.
             "penaltyLock": penaltyLock,
+            // GRO-40: back-to-back (Pomodoro) cycle bookkeeping.
+            "cycleId": cycleID,
+            "totalSessionsInCycle": max(1, totalSessionsInCycle),
+            "currentSessionIndex": 1,
         ]
 
         try await ref.setData(data)
-        print("[Firestore Session] Started session \(sessionID) in group \(groupID) (strict: \(strictMode), breakVoting: \(breakVotingEnabled))")
+        print("[Firestore Session] Started session \(sessionID) in group \(groupID) (strict: \(strictMode), breakVoting: \(breakVotingEnabled), cycle: 1/\(max(1, totalSessionsInCycle)))")
         return sessionID
+    }
+
+    // MARK: - Back-to-back cycle advancement (GRO-40)
+
+    /// Overwrites the session slot with the NEXT sub-session in a back-to-back cycle once
+    /// the inter-session break finishes. Keeps `cycleId`/duration/settings, issues a fresh
+    /// `sessionId` + `startAt`, resets every participant to `focused`, and — since this uses
+    /// `setData` rather than `updateData` — implicitly clears break/vote state left over from
+    /// the previous sub-session (no explicit `FieldValue.delete()` needed).
+    func advanceToNextSessionInCycle(groupID: String, hostUID: String) async throws {
+        let ref = activeSessionRef(for: groupID)
+        let snapshot = try await ref.getDocument()
+
+        guard let session = StudySession(document: snapshot) else {
+            throw SessionServiceError.sessionNotFound
+        }
+        guard session.hostUid == hostUID else {
+            throw SessionServiceError.notHost
+        }
+
+        let resetParticipants: [String: Any] = Dictionary(
+            uniqueKeysWithValues: session.participants.keys.map { uid in
+                (uid, ["state": ParticipantState.focused.rawValue])
+            }
+        )
+        let nextIndex = session.currentSessionIndex + 1
+
+        let data: [String: Any] = [
+            "sessionId": UUID().uuidString,
+            "status": SessionStatus.active.rawValue,
+            "hostUid": session.hostUid,
+            "durationMin": session.durationMin,
+            "strictMode": session.strictMode,
+            "startAt": FieldValue.serverTimestamp(),
+            "participants": resetParticipants,
+            "breakVotingEnabled": session.breakVotingEnabled,
+            "breakWindowSeconds": session.breakWindowSeconds,
+            "breakCooldownMinutes": session.breakCooldownMinutes,
+            "penaltyLock": false,
+            "cycleId": session.cycleId,
+            "totalSessionsInCycle": session.totalSessionsInCycle,
+            "currentSessionIndex": nextIndex,
+        ]
+
+        try await ref.setData(data)
+        print("[Firestore Session] Cycle \(session.cycleId) advanced to sub-session \(nextIndex)/\(session.totalSessionsInCycle) in group \(groupID)")
     }
 
     // MARK: - Join
@@ -229,13 +281,13 @@ final class SessionService {
         return parsed
     }
 
-    // MARK: - Break lifecycle (GRO-35)
-
-    private static let breakDurationSec = 600
+    // MARK: - Break lifecycle (GRO-35 / GRO-40)
 
     /// Writes the break start timestamp to the session document.
     /// Only the host may call this; other clients detect the break via their Firestore listener.
-    func startBreak(groupID: String, hostUID: String) async throws {
+    /// GRO-40: `durationSec` lets back-to-back cycles pass a Pomodoro-computed break length
+    /// (standard vs. long); callers that don't care fall back to the original 10-minute default.
+    func startBreak(groupID: String, hostUID: String, durationSec: Int = 600) async throws {
         let ref = activeSessionRef(for: groupID)
         let snapshot = try await ref.getDocument()
         guard let session = StudySession(document: snapshot) else { throw SessionServiceError.sessionNotFound }
@@ -243,10 +295,10 @@ final class SessionService {
 
         try await ref.updateData([
             "breakStartedAt": FieldValue.serverTimestamp(),
-            "breakDurationSec": Self.breakDurationSec,
+            "breakDurationSec": max(1, durationSec),
             "breakPausedSecondsRemaining": 0,
         ])
-        print("[Break] Break started in group \(groupID)")
+        print("[Break] Break started in group \(groupID) (\(durationSec)s)")
     }
 
     /// Pauses the break countdown, freezing it at `secondsRemaining`.
@@ -284,7 +336,10 @@ final class SessionService {
 
     /// Verifies the caller is the host then marks the session `ended`.
     /// The slot document stays in place so the next session can overwrite it cheaply.
-    func endSession(groupID: String, requesterUID: String) async throws {
+    /// GRO-40: `cycleEndedEarly` should be true only when the host cut a back-to-back
+    /// cycle short while sessions/breaks still remained — a natural finish of the last
+    /// sub-session (or a single, non-cycle session) leaves it false.
+    func endSession(groupID: String, requesterUID: String, cycleEndedEarly: Bool = false) async throws {
         let ref = activeSessionRef(for: groupID)
         let snapshot = try await ref.getDocument()
 
@@ -296,7 +351,11 @@ final class SessionService {
             throw SessionServiceError.notHost
         }
 
-        try await ref.updateData(["status": SessionStatus.ended.rawValue])
-        print("[Firestore Session] Marked session \(session.id) ended in group \(groupID)")
+        var update: [String: Any] = ["status": SessionStatus.ended.rawValue]
+        if cycleEndedEarly {
+            update["cycleEndedEarly"] = true
+        }
+        try await ref.updateData(update)
+        print("[Firestore Session] Marked session \(session.id) ended in group \(groupID)\(cycleEndedEarly ? " (cycle ended early)" : "")")
     }
 }

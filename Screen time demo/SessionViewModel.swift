@@ -52,6 +52,11 @@ final class SessionViewModel: ObservableObject {
     private var breakCountdownTask: Task<Void, Never>?
     private static let breakDurationSec = 600   // 10-minute break
 
+    // GRO-40: accumulates focus minutes earned across EARLIER sub-sessions of a back-to-back
+    // cycle. The final sub-session's minutes are added on top via `computeEarnedMinutes` when
+    // the summary is built, since that one still goes through the normal end-of-session path.
+    private var cycleMinutesEarnedSoFar: Int = 0
+
     // MARK: - Group settings
     private var strictMode: Bool = false
     private var requireBlocklist: Bool = true
@@ -96,6 +101,8 @@ final class SessionViewModel: ObservableObject {
         isOnBreak = false
         isBreakPaused = false
         breakSecondsRemaining = 0
+        cycleMinutesEarnedSoFar = 0
+        isAdvancingCycle = false
 
         guard currentUID != nil else { return }
 
@@ -155,7 +162,9 @@ final class SessionViewModel: ObservableObject {
         return BlocklistStore.shared.hasSelection
     }
 
-    func createSession(durationMin: Int = 25) async -> Bool {
+    /// GRO-40: `totalSessionsInCycle` > 1 configures a back-to-back (Pomodoro-style) cycle —
+    /// automatic breaks are inserted between sub-sessions until the last one finishes.
+    func createSession(durationMin: Int = 25, totalSessionsInCycle: Int = 1) async -> Bool {
         guard let groupID, let currentUID else {
             errorMessage = SessionServiceError.notSignedIn.localizedDescription
             return false
@@ -183,7 +192,8 @@ final class SessionViewModel: ObservableObject {
                 breakVotingEnabled: breakVotingEnabled,
                 breakWindowSeconds: breakWindowSeconds,
                 breakCooldownMinutes: cooldownMinutes,
-                penaltyLock: initialPenaltyLock
+                penaltyLock: initialPenaltyLock,
+                totalSessionsInCycle: totalSessionsInCycle
             )
             let capturedGroupID = groupID
             // GRO-33: persist last-used duration so all members' pickers stay in sync.
@@ -345,7 +355,11 @@ final class SessionViewModel: ObservableObject {
         await PendingOpenedEventFlusher.flush()
     }
 
-    func endSession() async -> Bool {
+    /// GRO-40: `cycleEndedEarly` should only be true when a back-to-back cycle is cut short
+    /// with sessions/breaks still remaining — see `endCycleEarly()` for the host-facing entry
+    /// point that computes this automatically.
+    @discardableResult
+    func endSession(cycleEndedEarly: Bool = false) async -> Bool {
         guard let groupID, let currentUID, let activeSession = session, !isTearingDown else { return false }
 
         let sessionID = activeSession.id
@@ -364,7 +378,8 @@ final class SessionViewModel: ObservableObject {
         do {
             try await SessionService.shared.endSession(
                 groupID: groupID,
-                requesterUID: currentUID
+                requesterUID: currentUID,
+                cycleEndedEarly: cycleEndedEarly
             )
             handleSessionEnd(for: activeSession)
             // GRO-17: Listener is kept alive here so it can pick up the NEXT session
@@ -381,6 +396,16 @@ final class SessionViewModel: ObservableObject {
             reattachListenerIfNeeded()
             return false
         }
+    }
+
+    /// GRO-40: host-only action that ends the ENTIRE back-to-back cycle immediately, from any
+    /// point — mid focus session or mid inter-session break — bypassing any remaining
+    /// sub-sessions/breaks and routing every participant straight to the summary via the same
+    /// Firestore `status: ended` signal used for a natural finish.
+    @discardableResult
+    func endCycleEarly() async -> Bool {
+        guard isHost, let session else { return false }
+        return await endSession(cycleEndedEarly: session.hasMoreSessionsInCycle)
     }
 
     // MARK: - Computed
@@ -433,24 +458,37 @@ final class SessionViewModel: ObservableObject {
                 SessionContextStore.shared.setActiveSession(nil)
                 SessionActivityScheduler.stopMonitoring()
                 scheduledEndDate = nil
+                // GRO-40: a lobby always represents the FIRST sub-session of a fresh cycle
+                // (advancing between sub-sessions goes straight from break to `.active`,
+                // never back through `.lobby`), so this is the right place to zero the
+                // cross-session accumulator for the new cycle.
+                cycleMinutesEarnedSoFar = 0
                 if didApplyBlocking {
                     BlockingManager.shared.clear()
                     didApplyBlocking = false
                 }
 
             case .active:
-                // Set a display value immediately so the UI never shows the default
-                // 0:00 state while prepareActiveSession awaits the async token refresh.
-                // Only set if currently zero — avoids resetting mid-session on presence updates.
-                if secondsRemaining == 0 {
-                    if let endDate = session.endDate {
-                        updateRemainingSeconds(until: endDate)
-                    } else {
-                        secondsRemaining = session.durationMin * 60
+                // GRO-40: never touch the focus countdown/shields/monitoring while a break is
+                // genuinely in progress — `syncBreakState` owns everything break-related below.
+                // (Defense in depth alongside the `.estimate` timestamp fix in `StudySession`:
+                // even a brief false read of `breakIsActive` here previously caused shields to
+                // be re-applied against a stale, already-past `endDate`, which could spiral
+                // into a rapid start-break/advance-session loop on very short test durations.)
+                if !session.breakIsActive {
+                    // Set a display value immediately so the UI never shows the default
+                    // 0:00 state while prepareActiveSession awaits the async token refresh.
+                    // Only set if currently zero — avoids resetting mid-session on presence updates.
+                    if secondsRemaining == 0 {
+                        if let endDate = session.endDate {
+                            updateRemainingSeconds(until: endDate)
+                        } else {
+                            secondsRemaining = session.durationMin * 60
+                        }
                     }
-                }
-                Task {
-                    await prepareActiveSession(session, statusChanged: statusChanged)
+                    Task {
+                        await prepareActiveSession(session, statusChanged: statusChanged)
+                    }
                 }
                 // GRO-11: react to break vote state changes on every snapshot.
                 handleBreakVoteUpdate(session)
@@ -507,8 +545,12 @@ final class SessionViewModel: ObservableObject {
             memberNames: participantNames,
             myUID: currentUID,
             myState: session.participants[currentUID],
-            minutesEarned: computeEarnedMinutes(for: session),
-            wasStrictMode: session.strictMode
+            // GRO-40: cumulative across every sub-session in the cycle, not just this one.
+            minutesEarned: cycleMinutesEarnedSoFar + computeEarnedMinutes(for: session),
+            wasStrictMode: session.strictMode,
+            totalSessionsInCycle: session.totalSessionsInCycle,
+            completedSessionIndex: session.currentSessionIndex,
+            cycleEndedEarly: session.cycleEndedEarly
         )
 
         withAnimation(.spring(duration: 0.5)) {
@@ -648,20 +690,28 @@ final class SessionViewModel: ObservableObject {
                 resolvedBreakVoteID = vote.id
 
                 if vote.status == .passed {
-                    // Lift shields and stop the focus countdown immediately on all devices (GRO-11).
+                    // GRO-39: a passed vote ends the CURRENT sub-session immediately — no break
+                    // timer is started for IT. It does NOT cancel the rest of a back-to-back
+                    // cycle: if more sub-sessions remain, this just mirrors a normal early
+                    // finish of this sub-session (credit its progress, then move into the
+                    // regular inter-session break); only when this is the LAST sub-session does
+                    // it actually end the whole session/cycle. Lift shields/monitoring on every
+                    // device right away so there's no gap waiting for Firestore to round-trip.
                     if didApplyBlocking {
                         BlockingManager.shared.clear()
                         didApplyBlocking = false
-                        print("[BreakVote] Shields lifted — break passed")
+                        print("[BreakVote] Shields lifted — vote passed")
                     }
-                    // Also stop DeviceActivity tracking so app-opens during break aren't penalised.
                     SessionActivityScheduler.stopMonitoring()
                     stopCountdown()
-                    Task { await updatePresence(.break) }
 
-                    // GRO-35: Host writes breakStartedAt to Firestore; all clients detect it via listener.
-                    if isHost, let gid = groupID {
-                        Task { try? await SessionService.shared.startBreak(groupID: gid, hostUID: currentUID ?? "") }
+                    if session.hasMoreSessionsInCycle {
+                        accumulateCycleProgress(for: session)
+                        if isHost {
+                            Task { await self.advanceCycleToBreak(for: session) }
+                        }
+                    } else if isHost {
+                        Task { _ = await self.endSession() }
                     }
 
                     // GRO-11: flag the group so the NEXT session starts penalty-locked.
@@ -723,6 +773,81 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Back-to-back cycle advancement (GRO-40)
+
+    /// Guards `advanceCycleToBreak`/`advanceCycleAfterBreak` against firing twice for the
+    /// same transition — the local countdown tick and a Firestore snapshot re-check can both
+    /// observe "time's up" within the same moment and would otherwise race to write two
+    /// competing cycle-advance documents.
+    private var isAdvancingCycle = false
+
+    /// Host-only: called when a sub-session's focus timer hits zero and more sub-sessions
+    /// remain in the cycle. Stops this sub-session's local infrastructure and writes the
+    /// Pomodoro-computed break to Firestore; every client (including this one) picks the
+    /// break up via `syncBreakState` on the next snapshot.
+    private func advanceCycleToBreak(for session: StudySession) async {
+        guard isHost, let groupID, !isAdvancingCycle else { return }
+        isAdvancingCycle = true
+        defer { isAdvancingCycle = false }
+
+        let breakSeconds = PomodoroBreakCalculator.breakSeconds(
+            afterSessionIndex: session.currentSessionIndex,
+            sessionDurationMin: session.durationMin
+        )
+
+        do {
+            try await SessionService.shared.startBreak(
+                groupID: groupID,
+                hostUID: currentUID ?? "",
+                durationSec: breakSeconds
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[Cycle] Failed to start inter-session break: \(error.localizedDescription)")
+        }
+    }
+
+    /// Host-only: called when the inter-session break's countdown reaches zero (or the host
+    /// skips it early via `endBreakEarly()`). Overwrites the session slot with the next
+    /// sub-session; every client (including this one) picks it up as a fresh `.active`
+    /// snapshot.
+    private func advanceCycleAfterBreak(for session: StudySession) async {
+        guard isHost, let groupID, let currentUID, !isAdvancingCycle else { return }
+        isAdvancingCycle = true
+        defer { isAdvancingCycle = false }
+
+        do {
+            try await SessionService.shared.advanceToNextSessionInCycle(
+                groupID: groupID,
+                hostUID: currentUID
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[Cycle] Failed to advance to next sub-session: \(error.localizedDescription)")
+        }
+    }
+
+    /// GRO-40: host-only — skips whatever remains of the current inter-session break and
+    /// moves straight into the next sub-session, as if its countdown had already hit zero.
+    /// Distinct from `endCycleEarly()`, which cancels the ENTIRE remaining cycle instead of
+    /// just the break.
+    @discardableResult
+    func endBreakEarly() async -> Bool {
+        guard isHost, let session, session.breakIsActive else { return false }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        await advanceCycleAfterBreak(for: session)
+        return true
+    }
+
+    /// Every device (host and participants alike) credits its own stats/minutes for a
+    /// sub-session that just finished mid-cycle — mirrors `awardStats`, which normally only
+    /// fires once, at the very end of a (single) session.
+    private func accumulateCycleProgress(for session: StudySession) {
+        cycleMinutesEarnedSoFar += computeEarnedMinutes(for: session)
+        awardStats(for: session)
+    }
+
     /// Syncs the local break state with the Firestore session snapshot.
     /// Called on every `.active` snapshot so navigation away/back or app restart
     /// never resets the countdown (GRO-35).
@@ -730,6 +855,20 @@ final class SessionViewModel: ObservableObject {
         guard session.breakIsActive else {
             if isOnBreak { stopBreakCountdown() }
             return
+        }
+
+        // GRO-40: transitioning into a break — halt local shields/monitoring/countdown for
+        // EVERY device (not just the host) the moment Firestore reflects the break start.
+        // Breaks are now driven exclusively by the back-to-back cycle timer (GRO-39 removed
+        // the break-vote → break-timer path), but this stays generic so any future
+        // `breakStartedAt` writer gets the same behavior for free.
+        if !isOnBreak {
+            if didApplyBlocking {
+                BlockingManager.shared.clear()
+                didApplyBlocking = false
+            }
+            SessionActivityScheduler.stopMonitoring()
+            stopCountdown()
         }
 
         isOnBreak = true
@@ -751,26 +890,45 @@ final class SessionViewModel: ObservableObject {
                 if drift > 3 { breakSecondsRemaining = firestoreRemaining }
             }
 
-            // Host-side expiry check (other clients wait for the host to call endSession).
+            // Host-side expiry check: advance to the next sub-session (other clients wait
+            // for the host's Firestore write, same as before).
             if firestoreRemaining == 0 && isHost {
-                Task { await endSession() }
+                Task { await self.advanceCycleAfterBreak(for: session) }
             }
         }
     }
 
     /// Starts a local 1-second tick task for smooth UI rendering.
     /// The true countdown value is re-anchored from Firestore on each snapshot.
+    ///
+    /// GRO-40 fix: `syncBreakState`'s expiry check only re-runs when a NEW Firestore snapshot
+    /// arrives, but nothing writes to the session doc while a break is quietly counting down —
+    /// so without an active driver here, the break could sit at 0s indefinitely until some
+    /// unrelated write (e.g. a pause/resume tap) happened to trigger a snapshot and give the
+    /// expiry check another chance to run. The host's local tick is now the primary driver:
+    /// once it reaches zero, it advances the cycle itself instead of waiting on Firestore.
     private func startLocalBreakTick() {
         breakCountdownTask?.cancel()
         breakCountdownTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
+                var shouldAdvance = false
+                var sessionSnapshot: StudySession?
                 await MainActor.run {
                     if self.breakSecondsRemaining > 0 {
                         self.breakSecondsRemaining -= 1
                     }
-                    // Expiry is handled by syncBreakState — don't end session from the tick task.
+                    if self.breakSecondsRemaining <= 0, self.isHost, let session = self.session {
+                        shouldAdvance = true
+                        sessionSnapshot = session
+                        self.breakCountdownTask?.cancel()
+                        self.breakCountdownTask = nil
+                    }
+                }
+                if shouldAdvance, let session = sessionSnapshot {
+                    await self.advanceCycleAfterBreak(for: session)
+                    return
                 }
             }
         }
@@ -865,12 +1023,35 @@ final class SessionViewModel: ObservableObject {
                     if self.secondsRemaining <= 0 {
                         self.countdownTask?.cancel()
                         Task {
+                            guard let session = self.session else { return }
+
+                            // GRO-40: more sub-sessions remain in this back-to-back cycle —
+                            // insert an automatic break instead of ending the group session.
+                            // Every device credits its OWN stats/minutes for the sub-session
+                            // that just finished (mirrors `awardStats`, which normally only
+                            // runs once at the very end); only the host advances Firestore.
+                            if session.hasMoreSessionsInCycle {
+                                self.accumulateCycleProgress(for: session)
+                                if self.isHost {
+                                    await self.advanceCycleToBreak(for: session)
+                                } else {
+                                    // Optimistically clear shields/monitoring now rather than
+                                    // waiting for the host's `breakStartedAt` write to round-trip
+                                    // back through Firestore; `syncBreakState` re-confirms (and is
+                                    // idempotent) once that snapshot arrives.
+                                    if self.didApplyBlocking {
+                                        BlockingManager.shared.clear()
+                                        self.didApplyBlocking = false
+                                    }
+                                    SessionActivityScheduler.stopMonitoring()
+                                }
+                                return
+                            }
+
                             if self.isHost {
                                 _ = await self.endSession()
                             } else {
-                                if let s = self.session {
-                                    self.handleSessionEnd(for: s)
-                                }
+                                self.handleSessionEnd(for: session)
                                 self.haltLocalSessionInfrastructure(reason: "timer expired (participant)")
                             }
                         }

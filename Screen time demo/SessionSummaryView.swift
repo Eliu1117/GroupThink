@@ -73,6 +73,22 @@ struct SessionSummaryView: View {
             Text("\(summary.groupName) · \(summary.actualMinutes) min session\(summary.wasStrictMode ? " · Strict" : "")")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            // GRO-40: back-to-back cycle progress + early-end indicator.
+            if summary.isPomodoroCycle {
+                Text(
+                    "Pomodoro cycle: \(summary.completedSessionIndex) of \(summary.totalSessionsInCycle) sessions"
+                        + (summary.cycleEndedEarly ? " · ended early" : "")
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(summary.cycleEndedEarly ? .orange : .secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    (summary.cycleEndedEarly ? Color.orange : Color.secondary).opacity(0.12),
+                    in: Capsule()
+                )
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -112,7 +128,8 @@ struct SessionSummaryView: View {
             HStack {
                 statBlock(
                     value: "+\(summary.minutesEarned)",
-                    label: "Minutes Earned",
+                    // GRO-40: cumulative across every sub-session for a back-to-back cycle.
+                    label: summary.isPomodoroCycle ? "Cycle Minutes" : "Minutes Earned",
                     symbol: "clock.fill",
                     color: summary.minutesEarned > 0 ? .green : .secondary
                 )

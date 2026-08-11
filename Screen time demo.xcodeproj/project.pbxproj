@@ -410,12 +410,12 @@
 					B1C2D3E32FCE90010023BF62 = {
 						CreatedOnToolsVersion = 26.5;
 					};
-				C1C2D4022FCE90010023BF62 = {
-					CreatedOnToolsVersion = 26.5;
-				};
-				D1D2D5022FCE90010023BF62 = {
-					CreatedOnToolsVersion = 26.5;
-				};
+					C1C2D4022FCE90010023BF62 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					D1D2D5022FCE90010023BF62 = {
+						CreatedOnToolsVersion = 26.5;
+					};
 				};
 			};
 			buildConfigurationList = AA36A9BC2FCE14D10023BF62 /* Build configuration list for PBXProject "Screen time demo" */;
