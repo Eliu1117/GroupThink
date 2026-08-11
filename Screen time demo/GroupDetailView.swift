@@ -73,7 +73,8 @@ struct GroupDetailView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .listRowBackground(Color(.systemGroupedBackground))
+            .tint(Color.theme.primary)
+            .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
             // ── Tab content ──────────────────────────────────────────────
@@ -86,6 +87,7 @@ struct GroupDetailView: View {
                 settingsContent
             }
         }
+        .kawaiiListBackground()
         .navigationTitle(currentGroup.name)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
@@ -200,8 +202,8 @@ struct GroupDetailView: View {
                 if canStartSession {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Session Length")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.6))
 
                         // Segmented picker for the most common durations.
                         Picker("Duration", selection: $sessionDurationMin) {
@@ -210,6 +212,7 @@ struct GroupDetailView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .tint(Color.theme.primary)
                     }
                 }
 
@@ -217,10 +220,12 @@ struct GroupDetailView: View {
                     Task { await sessionViewModel.createSession(durationMin: sessionDurationMin) }
                 } label: {
                     Label("Start Study Hall", systemImage: "play.circle.fill")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting))
                 .disabled(!canStartSession || sessionViewModel.isSubmitting)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .padding(.horizontal, 16)
             } footer: {
                 if !canStartSession {
                     Text("Only the group creator can start a session.")
@@ -253,12 +258,13 @@ struct GroupDetailView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "calendar.badge.clock")
                         .font(.largeTitle)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.theme.text.opacity(0.35))
                     Text("No Schedules Active")
-                        .font(.headline)
+                        .font(.theme.headline())
+                        .foregroundStyle(Color.theme.text)
                     Text("Open a card below to enable and configure Downtime or Routines for your group.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text.opacity(0.6))
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
@@ -269,41 +275,14 @@ struct GroupDetailView: View {
 
         // ── Downtime card ─────────────────────────────────────────────
         Section {
-            Button {
+            KawaiiListRow(
+                icon: "moon.stars.fill",
+                iconTint: currentGroup.downtimeEnabled ? Color.theme.secondary : Color.theme.text.opacity(0.15),
+                title: currentGroup.downtimeEnabled ? "Downtime · ON" : "Downtime",
+                subtitle: "Nightly app-blocking window with peer overrides"
+            ) {
                 showDowntimeConfig = true
-            } label: {
-                HStack(spacing: 14) {
-                    Image(systemName: "moon.stars.fill")
-                        .font(.title2)
-                        .foregroundStyle(currentGroup.downtimeEnabled ? .indigo : .secondary)
-                        .frame(width: 36)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text("Downtime")
-                                .font(.headline)
-                            if currentGroup.downtimeEnabled {
-                                Text("ON")
-                                    .font(.caption2.bold())
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(.indigo.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(.indigo)
-                            }
-                        }
-                        Text("Nightly app-blocking window with peer overrides")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
         } footer: {
             Text(currentGroup.downtimeEnabled
                  ? "Enabled · tap to configure your personal window and manage overrides."
@@ -312,41 +291,14 @@ struct GroupDetailView: View {
 
         // ── Routines card ─────────────────────────────────────────────
         Section {
-            Button {
+            KawaiiListRow(
+                icon: "sun.and.horizon.fill",
+                iconTint: currentGroup.routineEnabled ? Color.theme.primary : Color.theme.text.opacity(0.15),
+                title: currentGroup.routineEnabled ? "Routines · ON" : "Routines",
+                subtitle: "Apps stay locked until your routine condition is met"
+            ) {
                 showRoutineConfig = true
-            } label: {
-                HStack(spacing: 14) {
-                    Image(systemName: "sun.and.horizon.fill")
-                        .font(.title2)
-                        .foregroundStyle(currentGroup.routineEnabled ? .orange : .secondary)
-                        .frame(width: 36)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text("Routines")
-                                .font(.headline)
-                            if currentGroup.routineEnabled {
-                                Text("ON")
-                                    .font(.caption2.bold())
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(.orange.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(.orange)
-                            }
-                        }
-                        Text("Apps stay locked until your routine condition is met")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
         } footer: {
             Text(currentGroup.routineEnabled
                  ? "Enabled · tap to configure your routine schedule."
@@ -401,14 +353,19 @@ struct GroupDetailView: View {
         if isCreator {
             Toggle(isOn: settingBinding(key: key, value: value)) {
                 Label(title, systemImage: symbol)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
             }
+            .tint(Color.theme.primary)
             .disabled(viewModel.isUpdatingSettings)
         } else {
             HStack {
                 Label(title, systemImage: symbol)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
                 Spacer()
                 Image(systemName: value ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(value ? .green : .secondary)
+                    .foregroundStyle(value ? Color.theme.secondary : Color.theme.text.opacity(0.3))
             }
         }
     }
@@ -442,6 +399,8 @@ struct GroupDetailView: View {
                 )
             } label: {
                 Label("Leaderboard", systemImage: "trophy.fill")
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
             }
         }
     }
@@ -452,7 +411,8 @@ struct GroupDetailView: View {
         Section("Invite code") {
             HStack {
                 Text(currentGroup.inviteCode)
-                    .font(.title2.monospaced().bold())
+                    .font(.system(.title2, design: .rounded).monospaced().bold())
+                    .foregroundStyle(Color.theme.text)
 
                 Spacer()
 
@@ -463,12 +423,13 @@ struct GroupDetailView: View {
                     Label(didCopyCode ? "Copied" : "Copy", systemImage: didCopyCode ? "checkmark" : "doc.on.doc")
                 }
                 .labelStyle(.iconOnly)
+                .tint(Color.theme.primary)
                 .accessibilityLabel("Copy invite code")
             }
 
             Text("Share this code so friends can join your study hall.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(.theme.caption())
+                .foregroundStyle(Color.theme.text.opacity(0.55))
         }
     }
 
@@ -481,23 +442,32 @@ struct GroupDetailView: View {
             } else {
                 ForEach(viewModel.members) { member in
                     HStack(spacing: 12) {
-                        Image(systemName: "person.crop.circle.fill")
-                            .foregroundStyle(.secondary)
+                        ZStack {
+                            Circle()
+                                .fill(Color.theme.primary.opacity(0.35))
+                                .frame(width: 30, height: 30)
+                            Image(systemName: "person.fill")
+                                .font(.caption)
+                                .foregroundStyle(Color.theme.text)
+                        }
 
                         Text(member.displayName)
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
 
                         if member.id == currentGroup.createdBy {
                             Text("Creator")
-                                .font(.caption2.bold())
+                                .font(.theme.caption(10))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(.tint.opacity(0.15), in: Capsule())
+                                .background(Color.theme.secondary.opacity(0.5), in: Capsule())
+                                .foregroundStyle(Color.theme.text)
                         }
 
                         if member.id == currentUserUID {
                             Text("You")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.theme.caption())
+                                .foregroundStyle(Color.theme.text.opacity(0.5))
                         }
 
                         Spacer(minLength: 0)
@@ -517,6 +487,7 @@ struct GroupDetailView: View {
                 Label("Delete Group", systemImage: "trash")
                     .frame(maxWidth: .infinity)
             }
+            .tint(.red)
             .disabled(viewModel.isDeleting)
         }
     }

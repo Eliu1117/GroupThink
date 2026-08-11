@@ -31,6 +31,7 @@ struct JoinGroupView: View {
                     }
                 }
             }
+            .kawaiiListBackground()
             .navigationTitle("Join Group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -49,6 +50,7 @@ struct JoinGroupView: View {
                             }
                         }
                     }
+                    .fontWeight(.semibold)
                     .disabled(
                         inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).count < 4
                         || viewModel.isSubmitting

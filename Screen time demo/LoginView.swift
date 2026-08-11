@@ -15,16 +15,22 @@ struct LoginView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Image(systemName: "books.vertical.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.tint)
+                ZStack {
+                    Circle()
+                        .fill(Color.theme.primary.opacity(0.4))
+                        .frame(width: 96, height: 96)
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Color.theme.text)
+                }
 
                 Text("Study Hall")
-                    .font(.largeTitle.bold())
+                    .font(.theme.heading(32))
+                    .foregroundStyle(Color.theme.text)
 
                 Text("Study together. Stay accountable.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
                     .multilineTextAlignment(.center)
             }
 
@@ -38,10 +44,12 @@ struct LoginView: View {
                 }
                 .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                 .frame(height: 50)
+                .clipShape(Capsule())
                 .disabled(authViewModel.isLoading)
 
                 if authViewModel.isLoading {
                     ProgressView("Signing in…")
+                        .tint(Color.theme.text)
                 }
 
                 if let errorMessage = authViewModel.errorMessage {
@@ -56,6 +64,7 @@ struct LoginView: View {
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 24)
+        .kawaiiBackground()
     }
 }
 

@@ -67,9 +67,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct Screen_time_demoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
+    init() {
+        KawaiiAppearance.apply()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .tint(Color.theme.primary)
         }
     }
 }
