@@ -23,6 +23,12 @@ struct ContentView: View {
     @State private var timeRemaining = 0
     @State private var blockTask: Task<Void, Never>?
 
+    // GRO-30: personal session summary
+    @State private var sessionStartAt: Date?
+    @State private var sessionPlannedDurationMin = 0
+    @State private var sessionWasStrict = false
+    @State private var personalSummary: PersonalSessionSummary?
+
     // GRO-36: new controls
     @State private var selectedDurationMin = 25
     @State private var strictMode = false
@@ -77,6 +83,9 @@ struct ContentView: View {
             }
             .onAppear {
                 authManager.refreshAuthorizationStatus()
+            }
+            .sheet(item: $personalSummary) { summary in
+                PersonalSessionSummaryView(summary: summary)
             }
         }
     }
@@ -249,6 +258,13 @@ struct ContentView: View {
         // back to treating the session as non-strict and re-shields using only the personal
         // blocklist, silently downgrading strict mode to blocklist-only enforcement.
         SessionContextStore.shared.setStrictMode(strictMode)
+        // GRO-30: mark a personal session active so Shield/Monitor extensions have a local
+        // counter to log "opened blocked app" attempts against — solo sessions never write a
+        // group ActiveSessionContext, so without this the attempt would be silently dropped.
+        SessionContextStore.shared.startPersonalSession()
+        sessionStartAt = Date()
+        sessionPlannedDurationMin = selectedDurationMin
+        sessionWasStrict = strictMode
 
         if strictMode {
             BlockingManager.shared.blockStrict(whitelist: whitelistSelection)
@@ -283,11 +299,13 @@ struct ContentView: View {
                 isBlocking = false
                 timeRemaining = 0
                 blockTask = nil
+                presentPersonalSummary(endedEarly: false)
             }
         }
     }
 
     private func stopBlock() {
+        let wasBlocking = isBlocking
         blockTask?.cancel()
         blockTask = nil
         SessionActivityScheduler.stopMonitoring()
@@ -295,6 +313,27 @@ struct ContentView: View {
         SessionContextStore.shared.setStrictMode(false)
         isBlocking = false
         timeRemaining = 0
+        if wasBlocking {
+            presentPersonalSummary(endedEarly: true)
+        }
+    }
+
+    /// Drains the local "opened blocked app" counter and shows the personal session summary.
+    /// Called from both the natural-completion path and a manual stop.
+    private func presentPersonalSummary(endedEarly: Bool) {
+        let openedCount = SessionContextStore.shared.endPersonalSession()
+        guard let startAt = sessionStartAt else { return }
+
+        personalSummary = PersonalSessionSummary(
+            id: UUID().uuidString,
+            plannedDurationMin: sessionPlannedDurationMin,
+            startAt: startAt,
+            endedAt: Date(),
+            wasStrictMode: sessionWasStrict,
+            endedEarly: endedEarly,
+            openedBlockedAppCount: openedCount
+        )
+        sessionStartAt = nil
     }
 
     /// Personal blocklist with whitelist tokens subtracted — mirrors the same logic used for
