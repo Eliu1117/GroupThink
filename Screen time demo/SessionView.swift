@@ -37,6 +37,13 @@ struct SessionView: View {
                     .font(.theme.body())
                     .foregroundStyle(Color.theme.text.opacity(0.6))
 
+                // GRO-40: back-to-back cycle indicator.
+                if session.isPomodoroCycle {
+                    Label("Pomodoro cycle: \(session.totalSessionsInCycle) sessions back-to-back", systemImage: "repeat")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
                 if session.strictMode {
                     Label("Strict mode: all apps blocked except your whitelist", systemImage: "lock.shield.fill")
                         .font(.theme.caption())
@@ -97,6 +104,7 @@ struct SessionView: View {
 
     @ViewBuilder
     private func breakVoteControls(_ session: StudySession) -> some View {
+        // GRO-39: a passed vote now ends the session immediately instead of starting a break.
         if let vote = session.activeBreakVote, vote.isPending {
             // Vote in flight — show a tap-to-view banner.
             Button {
@@ -106,7 +114,7 @@ struct SessionView: View {
                     Image(systemName: "figure.stand.line.dotted.figure.stand")
                         .foregroundStyle(Color.theme.text)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Break vote in progress")
+                        Text("End-early vote in progress")
                             .font(.theme.body())
                             .foregroundStyle(Color.theme.text)
                         Text("Tap to vote · \(vote.secondsRemaining)s remaining")
@@ -129,7 +137,8 @@ struct SessionView: View {
                 Button {
                     Task { await viewModel.initiateBreakVote() }
                 } label: {
-                    Label("Initiate Break Vote", systemImage: "figure.stand.line.dotted.figure.stand")
+                    Label("Vote to End Early", systemImage: "figure.stand.line.dotted.figure.stand")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.kawaiiOutlined)
                 .disabled(!session.canInitiateBreakVote || viewModel.isSubmitting)
@@ -147,7 +156,7 @@ struct SessionView: View {
     private func breakVoteDisabledReason(_ session: StudySession) -> String? {
         guard session.breakVotingEnabled else { return nil }
         if session.penaltyLock {
-            return "A break already passed this session — voting is locked."
+            return "An early-end vote already passed last session — voting is locked."
         }
         if !session.breakTimeLockCleared {
             let needed = session.durationMin / 2
@@ -170,14 +179,21 @@ struct SessionView: View {
             VStack(spacing: 20) {
                 if viewModel.isInLobby {
                     if viewModel.isOnBreak {
-                        // GRO-11: Break countdown — replaces the focus timer while the break runs.
-                        breakTimerCard
+                        // GRO-40: Break countdown — replaces the focus timer between sub-sessions.
+                        breakTimerCard(session)
                     } else {
                         // GRO-19: Focus countdown — survives navigation pushes via SessionViewModel.
                         VStack(spacing: 8) {
                             Text("Session Active")
                                 .font(.theme.headline())
                                 .foregroundStyle(Color.theme.text)
+
+                                // GRO-40: back-to-back cycle progress.
+                                if session.isPomodoroCycle {
+                                    Text(session.cycleProgressLabel)
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                }
                             Text(viewModel.formattedCountdown)
                                 .font(.system(size: 48, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.theme.text)
@@ -214,10 +230,13 @@ struct SessionView: View {
                 if viewModel.isInLobby, !viewModel.isOnBreak {
                     if viewModel.isHost {
                         Button(role: .destructive) {
-                            Task { await viewModel.endSession() }
+                            Task { await viewModel.endCycleEarly() }
                         } label: {
-                            Label("End Session", systemImage: "stop.fill")
-                                .frame(maxWidth: .infinity)
+                            Label(
+                                session.isPomodoroCycle ? "End Cycle Early" : "End Session",
+                                systemImage: "stop.fill"
+                            )
+                            .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
                         .disabled(viewModel.isSubmitting)
@@ -242,15 +261,23 @@ struct SessionView: View {
         }
     }
 
-    // MARK: - Break timer card (GRO-35)
+    // MARK: - Break timer card (GRO-35 / GRO-40)
 
-    private var breakTimerCard: some View {
-        VStack(spacing: 16) {
+    /// GRO-40: breaks are now exclusively the automatic inter-session pauses in a
+    /// back-to-back cycle, so `isLongBreak` reflects the Pomodoro "every 4th break" rule.
+    private func isLongBreak(_ session: StudySession) -> Bool {
+        PomodoroBreakCalculator.isLongBreak(afterSessionIndex: session.currentSessionIndex)
+    }
+
+    private func breakTimerCard(_ session: StudySession) -> some View {
+        let longBreak = isLongBreak(session)
+
+        return VStack(spacing: 16) {
             // Header
             VStack(spacing: 4) {
-                Label("Break Time", systemImage: "cup.and.saucer.fill")
+                Label(longBreak ? "Long Break" : "Break Time", systemImage: "cup.and.saucer.fill")
                     .font(.theme.headline())
-                    .foregroundStyle(Color.theme.text)
+                    .foregroundStyle(viewModel.isBreakPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.green))
 
                 if viewModel.isBreakPaused {
                     Label("Paused", systemImage: "pause.circle.fill")
@@ -259,6 +286,12 @@ struct SessionView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Color.theme.surface, in: Capsule())
+                }
+
+                if session.isPomodoroCycle && session.hasMoreSessionsInCycle {
+                    Text("Up next: Session \(session.currentSessionIndex + 1) of \(session.totalSessionsInCycle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -276,30 +309,43 @@ struct SessionView: View {
 
             // Host-only controls
             if viewModel.isHost {
-                HStack(spacing: 12) {
-                    // Pause / Resume
-                    Button {
-                        Task {
-                            if viewModel.isBreakPaused {
-                                await viewModel.resumeBreak()
-                            } else {
-                                await viewModel.pauseBreak()
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        // Pause / Resume
+                        Button {
+                            Task {
+                                if viewModel.isBreakPaused {
+                                    await viewModel.resumeBreak()
+                                } else {
+                                    await viewModel.pauseBreak()
+                                }
                             }
+                        } label: {
+                            Label(
+                                viewModel.isBreakPaused ? "Resume" : "Pause",
+                                systemImage: viewModel.isBreakPaused ? "play.fill" : "pause.fill"
+                            )
                         }
-                    } label: {
-                        Label(
-                            viewModel.isBreakPaused ? "Resume" : "Pause",
-                            systemImage: viewModel.isBreakPaused ? "play.fill" : "pause.fill"
-                        )
-                    }
-                    .buttonStyle(.kawaiiOutlined)
-                    .disabled(viewModel.isSubmitting)
+                        .buttonStyle(.kawaiiOutlined)
+                        .disabled(viewModel.isSubmitting)
 
-                    // End break early
+                        // Skip the rest of THIS break only — moves straight into the next
+                        // sub-session (or ends the session, if this was the last one).
+                        Button {
+                            Task { await viewModel.endBreakEarly() }
+                        } label: {
+                            Label("Skip Break", systemImage: "forward.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.kawaiiOutlined)
+                        .disabled(viewModel.isSubmitting)
+
+
+                    // End the whole cycle early, right from the break.
                     Button(role: .destructive) {
-                        Task { await viewModel.endSession() }
+                        Task { await viewModel.endCycleEarly() }
                     } label: {
-                        Label("End Break", systemImage: "stop.fill")
+                        Label(session.isPomodoroCycle ? "End Cycle Early" : "End Break", systemImage: "stop.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)

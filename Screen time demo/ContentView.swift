@@ -11,7 +11,8 @@ import SwiftUI
 
 struct ContentView: View {
     // GRO-36: selectable durations matching the group session presets.
-    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
+    // TODO: remove the "1" preset — added only for quick testing of session-end/cycle flows.
+    private static let durationPresets = [1, 10, 15, 20, 25, 30, 45, 60, 90]
 
     @StateObject private var authManager = AuthorizationManager.shared
 

@@ -81,6 +81,22 @@ struct SessionSummaryView: View {
             Text("\(summary.groupName) · \(summary.actualMinutes) min session\(summary.wasStrictMode ? " · Strict" : "")")
                 .font(.theme.body())
                 .foregroundStyle(Color.theme.text.opacity(0.6))
+                // GRO-40: back-to-back cycle progress + early-end indicator.
+                if summary.isPomodoroCycle {
+                    Text(
+                        "Pomodoro cycle: \(summary.completedSessionIndex) of \(summary.totalSessionsInCycle) sessions"
+                            + (summary.cycleEndedEarly ? " · ended early" : "")
+                    )
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(summary.cycleEndedEarly ? .orange : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        (summary.cycleEndedEarly ? Color.orange : Color.secondary).opacity(0.12),
+                        in: Capsule()
+                    )
+                }
+
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -116,25 +132,28 @@ struct SessionSummaryView: View {
     // MARK: - Personal result
 
     private var personalResultCard: some View {
-        HStack(spacing: 12) {
-            KawaiiStatBlock(
-                icon: "clock.fill",
-                iconTint: Color.theme.secondary,
-                value: "+\(summary.minutesEarned)",
-                label: "Minutes Earned"
-            )
-            KawaiiStatBlock(
-                icon: "sum",
-                iconTint: Color.theme.primary,
-                value: profile.map { "\($0.focusMinutes)" } ?? "—",
-                label: "Total Minutes"
-            )
-            KawaiiStatBlock(
-                icon: "flame.fill",
-                iconTint: Color(hex: "E8B94A").opacity(0.6),
-                value: profile.map { "\($0.currentStreak)" } ?? "—",
-                label: "Day Streak"
-            )
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                KawaiiStatBlock(
+                    icon: "clock.fill",
+                    iconTint: summary.minutesEarned > 0 ? Color.green : Color.theme.secondary,
+                    value: "+\(summary.minutesEarned)",
+                    label: summary.isPomodoroCycle ? "Cycle Minutes" : "Minutes Earned"
+                )
+                KawaiiStatBlock(
+                    icon: "sum",
+                    iconTint: Color.theme.primary,
+                    value: profile.map { "\($0.focusMinutes)" } ?? "—",
+                    label: "Total Minutes"
+                )
+                KawaiiStatBlock(
+                    icon: "flame.fill",
+                    iconTint: Color(hex: "E8B94A").opacity(0.6),
+                    value: profile.map { "\($0.currentStreak)" } ?? "—",
+                    label: "Day Streak"
+                )
+            }
+
         }
         .opacity(statsVisible ? 1 : 0)
         .offset(y: statsVisible ? 0 : 16)
