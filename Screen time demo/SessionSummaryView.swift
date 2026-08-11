@@ -28,11 +28,13 @@ struct SessionSummaryView: View {
                 }
                 .padding()
             }
+            .kawaiiBackground()
             .navigationTitle("Session Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .tint(Color.theme.primary)
                 }
             }
             .task {
@@ -61,34 +63,40 @@ struct SessionSummaryView: View {
 
     private var heroSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: heroSymbol)
-                .font(.system(size: 64))
-                .foregroundStyle(heroColor)
-                .scaleEffect(heroVisible ? 1 : 0.2)
-                .opacity(heroVisible ? 1 : 0)
+            ZStack {
+                Circle()
+                    .fill(heroColor.opacity(0.25))
+                    .frame(width: 108, height: 108)
+                Image(systemName: heroSymbol)
+                    .font(.system(size: 48))
+                    .foregroundStyle(heroColor)
+            }
+            .scaleEffect(heroVisible ? 1 : 0.2)
+            .opacity(heroVisible ? 1 : 0)
 
             Text(heroTitle)
-                .font(.title2.bold())
+                .font(.theme.heading(22))
+                .foregroundStyle(Color.theme.text)
 
             Text("\(summary.groupName) · \(summary.actualMinutes) min session\(summary.wasStrictMode ? " · Strict" : "")")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.theme.body())
+                .foregroundStyle(Color.theme.text.opacity(0.6))
+                // GRO-40: back-to-back cycle progress + early-end indicator.
+                if summary.isPomodoroCycle {
+                    Text(
+                        "Pomodoro cycle: \(summary.completedSessionIndex) of \(summary.totalSessionsInCycle) sessions"
+                            + (summary.cycleEndedEarly ? " · ended early" : "")
+                    )
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(summary.cycleEndedEarly ? .orange : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        (summary.cycleEndedEarly ? Color.orange : Color.secondary).opacity(0.12),
+                        in: Capsule()
+                    )
+                }
 
-            // GRO-40: back-to-back cycle progress + early-end indicator.
-            if summary.isPomodoroCycle {
-                Text(
-                    "Pomodoro cycle: \(summary.completedSessionIndex) of \(summary.totalSessionsInCycle) sessions"
-                        + (summary.cycleEndedEarly ? " · ended early" : "")
-                )
-                .font(.caption.weight(.medium))
-                .foregroundStyle(summary.cycleEndedEarly ? .orange : .secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    (summary.cycleEndedEarly ? Color.orange : Color.secondary).opacity(0.12),
-                    in: Capsule()
-                )
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -105,10 +113,10 @@ struct SessionSummaryView: View {
 
     private var heroColor: Color {
         switch summary.myState {
-        case .focused: return .yellow
-        case .left: return .yellow
+        case .focused: return Color(hex: "E8B94A")
+        case .left: return Color(hex: "E8B94A")
         case .opened: return .red
-        default: return .green
+        default: return Color(hex: "6FA287")
         }
     }
 
@@ -125,54 +133,30 @@ struct SessionSummaryView: View {
 
     private var personalResultCard: some View {
         VStack(spacing: 16) {
-            HStack {
-                statBlock(
+            HStack(spacing: 12) {
+                KawaiiStatBlock(
+                    icon: "clock.fill",
+                    iconTint: summary.minutesEarned > 0 ? Color.green : Color.theme.secondary,
                     value: "+\(summary.minutesEarned)",
-                    // GRO-40: cumulative across every sub-session for a back-to-back cycle.
-                    label: summary.isPomodoroCycle ? "Cycle Minutes" : "Minutes Earned",
-                    symbol: "clock.fill",
-                    color: summary.minutesEarned > 0 ? .green : .secondary
+                    label: summary.isPomodoroCycle ? "Cycle Minutes" : "Minutes Earned"
                 )
-
-                Divider().frame(height: 44)
-
-                statBlock(
+                KawaiiStatBlock(
+                    icon: "sum",
+                    iconTint: Color.theme.primary,
                     value: profile.map { "\($0.focusMinutes)" } ?? "—",
-                    label: "Total Minutes",
-                    symbol: "sum",
-                    color: .blue
+                    label: "Total Minutes"
                 )
-
-                Divider().frame(height: 44)
-
-                statBlock(
+                KawaiiStatBlock(
+                    icon: "flame.fill",
+                    iconTint: Color(hex: "E8B94A").opacity(0.6),
                     value: profile.map { "\($0.currentStreak)" } ?? "—",
-                    label: "Day Streak",
-                    symbol: "flame.fill",
-                    color: .orange
+                    label: "Day Streak"
                 )
             }
+
         }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
         .opacity(statsVisible ? 1 : 0)
         .offset(y: statsVisible ? 0 : 16)
-    }
-
-    private func statBlock(value: String, label: String, symbol: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: symbol)
-                .font(.subheadline)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.title3.bold().monospacedDigit())
-                .contentTransition(.numericText())
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Session stats
@@ -180,17 +164,17 @@ struct SessionSummaryView: View {
     private var sessionStatsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Group Outcome")
-                .font(.headline)
+                .font(.theme.headline())
+                .foregroundStyle(Color.theme.text)
 
             HStack(spacing: 12) {
-                outcomePill(count: summary.focusedCount, label: "Focused", color: .green)
+                outcomePill(count: summary.focusedCount, label: "Focused", color: Color(hex: "6FA287"))
                 outcomePill(count: summary.leftCount, label: "Left", color: .yellow)
                 outcomePill(count: summary.openedCount, label: "Opened", color: .red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
+        .kawaiiCard()
         .opacity(statsVisible ? 1 : 0)
         .offset(y: statsVisible ? 0 : 16)
     }
@@ -201,11 +185,12 @@ struct SessionSummaryView: View {
                 .fill(color)
                 .frame(width: 8, height: 8)
             Text("\(count) \(label)")
-                .font(.subheadline.weight(.medium))
+                .font(.theme.body(14))
+                .foregroundStyle(Color.theme.text)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(color.opacity(0.1), in: Capsule())
+        .background(color.opacity(0.15), in: Capsule())
     }
 
     // MARK: - Roster
@@ -213,7 +198,8 @@ struct SessionSummaryView: View {
     private var rosterCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Final Roster")
-                .font(.headline)
+                .font(.theme.headline())
+                .foregroundStyle(Color.theme.text)
 
             ForEach(Array(summary.rankedParticipants.enumerated()), id: \.element.id) { index, participant in
                 HStack(spacing: 12) {
@@ -222,18 +208,20 @@ struct SessionSummaryView: View {
                         .frame(width: 24)
 
                     Text(summary.memberNames[participant.id] ?? "Member")
+                        .font(.theme.body())
                         .fontWeight(participant.id == summary.myUID ? .semibold : .regular)
+                        .foregroundStyle(Color.theme.text)
 
                     if participant.id == summary.myUID {
                         Text("You")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.5))
                     }
 
                     Spacer(minLength: 0)
 
                     Text(participant.state.label)
-                        .font(.caption.weight(.medium))
+                        .font(.theme.caption())
                         .foregroundStyle(stateColor(participant.state))
                 }
                 .padding(.vertical, 6)
@@ -246,14 +234,13 @@ struct SessionSummaryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
+        .kawaiiCard()
         .opacity(rosterVisible ? 1 : 0)
     }
 
     private func stateColor(_ state: ParticipantState) -> Color {
         switch state {
-        case .focused: return .green
+        case .focused: return Color(hex: "6FA287")
         case .left: return .yellow
         case .opened: return .red
         case .break: return .orange

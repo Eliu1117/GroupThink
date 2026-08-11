@@ -30,6 +30,7 @@ struct CreateGroupView: View {
                     }
                 }
             }
+            .kawaiiListBackground()
             .navigationTitle("New Group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -48,6 +49,7 @@ struct CreateGroupView: View {
                             }
                         }
                     }
+                    .fontWeight(.semibold)
                     .disabled(
                         groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || viewModel.isSubmitting

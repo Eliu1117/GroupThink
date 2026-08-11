@@ -73,6 +73,7 @@ struct BreakVoteView: View {
             Spacer(minLength: 0)
         }
         .padding()
+        .kawaiiBackground()
         .navigationTitle("Break Vote")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -103,15 +104,18 @@ struct BreakVoteView: View {
         // early-end vote rather than a break request.
         if let vote, let name = viewModel.participantNames[vote.initiatorUid] {
             Text("\(name) wants to end the session early")
-                .font(.title3.weight(.semibold))
+                .font(.theme.heading(20))
+                .foregroundStyle(Color.theme.text)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
         } else {
             Text("A member wants to end the session early")
-                .font(.title3.weight(.semibold))
+                .font(.theme.heading(20))
+                .foregroundStyle(Color.theme.text)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
-        }
+}
+
     }
 
     // MARK: - Countdown circle
@@ -138,11 +142,12 @@ struct BreakVoteView: View {
             VStack(spacing: 2) {
                 Text(formattedCountdown)
                     .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.theme.text)
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text("remaining")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.caption())
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
             }
         }
         .frame(width: 160, height: 160)
@@ -154,24 +159,25 @@ struct BreakVoteView: View {
         VStack(spacing: 8) {
             HStack {
                 Label("\(yesCount) to end early", systemImage: "hand.thumbsup.fill")
-                    .foregroundStyle(.green)
+                    .font(.theme.body())
+                    .foregroundStyle(Color(hex: "6FA287"))
+
                 Spacer()
                 Text("Need \(neededForPass) to pass")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.caption())
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
             }
             ProgressView(value: Double(yesCount), total: Double(totalParticipants))
                 .tint(.green)
 
             HStack {
                 Text("\(votedCount) of \(totalParticipants) voted")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.caption())
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
                 Spacer()
             }
         }
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .kawaiiCard()
     }
 
     // MARK: - Voting buttons

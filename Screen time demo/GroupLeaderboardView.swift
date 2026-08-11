@@ -40,6 +40,7 @@ struct GroupLeaderboardView: View {
                 }
             }
         }
+        .kawaiiListBackground()
         .navigationTitle("Leaderboard")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
@@ -55,16 +56,22 @@ struct GroupLeaderboardView: View {
     private var groupStreakSection: some View {
         Section {
             HStack(spacing: 16) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(viewModel.groupStreak > 0 ? .orange : .secondary)
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "E8B94A").opacity(0.3))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(viewModel.groupStreak > 0 ? Color(hex: "E8B94A") : Color.theme.text.opacity(0.3))
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(viewModel.groupStreak) day\(viewModel.groupStreak == 1 ? "" : "s")")
-                        .font(.title2.bold())
+                        .font(.theme.heading(20))
+                        .foregroundStyle(Color.theme.text)
                     Text("Group streak")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
                 }
 
                 Spacer(minLength: 0)
@@ -81,25 +88,32 @@ struct GroupLeaderboardView: View {
         HStack(spacing: 12) {
             rankBadge(rank)
 
-            Image(systemName: "person.crop.circle.fill")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+            ZStack {
+                Circle()
+                    .fill(Color.theme.primary.opacity(0.35))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "person.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.theme.text)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(entry.displayName)
+                        .font(.theme.body())
                         .fontWeight(entry.id == currentUserUID ? .semibold : .regular)
+                        .foregroundStyle(Color.theme.text)
 
                     if entry.id == currentUserUID {
                         Text("You")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.5))
                     }
                 }
 
                 Text(formattedMinutes(entry.focusMinutes))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.caption())
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
             }
 
             Spacer(minLength: 0)
@@ -107,11 +121,12 @@ struct GroupLeaderboardView: View {
             if entry.currentStreak > 0 {
                 HStack(spacing: 2) {
                     Image(systemName: "flame.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color(hex: "E8B94A"))
                     Text("\(entry.currentStreak)")
                         .fontWeight(.semibold)
+                        .foregroundStyle(Color.theme.text)
                 }
-                .font(.subheadline)
+                .font(.theme.body(14))
             }
         }
         .padding(.vertical, 2)
@@ -120,8 +135,8 @@ struct GroupLeaderboardView: View {
     @ViewBuilder
     private func rankBadge(_ rank: Int) -> some View {
         Text("\(rank)")
-            .font(.subheadline.bold().monospacedDigit())
-            .foregroundStyle(rank <= 3 ? .white : .secondary)
+            .font(.theme.body(14).bold().monospacedDigit())
+            .foregroundStyle(rank <= 3 ? Color.theme.text : Color.theme.text.opacity(0.5))
             .frame(width: 28, height: 28)
             .background(
                 Circle().fill(rankColor(rank))
@@ -130,10 +145,10 @@ struct GroupLeaderboardView: View {
 
     private func rankColor(_ rank: Int) -> Color {
         switch rank {
-        case 1: return .yellow
-        case 2: return .gray
-        case 3: return .brown
-        default: return Color(.systemGray5)
+        case 1: return Color(hex: "E8B94A").opacity(0.6)
+        case 2: return Color.theme.text.opacity(0.15)
+        case 3: return Color.theme.primary.opacity(0.5)
+        default: return Color.theme.background
         }
     }
 

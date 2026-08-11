@@ -30,11 +30,12 @@ struct SessionView: View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Study Hall Lobby", systemImage: "person.3.sequence.fill")
-                    .font(.headline)
+                    .font(.theme.headline())
+                    .foregroundStyle(Color.theme.text)
 
                 Text("\(session.durationMin)-minute session · waiting to start")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
 
                 // GRO-40: back-to-back cycle indicator.
                 if session.isPomodoroCycle {
@@ -45,11 +46,11 @@ struct SessionView: View {
 
                 if session.strictMode {
                     Label("Strict mode: all apps blocked except your whitelist", systemImage: "lock.shield.fill")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.purple)
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(.purple.opacity(0.1), in: Capsule())
+                        .background(Color.theme.primary.opacity(0.4), in: Capsule())
                 }
 
                 // GRO-18: Renamed FocusRosterView
@@ -72,9 +73,8 @@ struct SessionView: View {
                 Task { await viewModel.joinLobby() }
             } label: {
                 Label("Join Lobby", systemImage: "person.badge.plus")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.kawaiiPrimary(isDisabled: viewModel.isSubmitting))
             .disabled(viewModel.isSubmitting)
         }
 
@@ -83,10 +83,8 @@ struct SessionView: View {
                 Task { await viewModel.launchSession() }
             } label: {
                 Label("Launch Session", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
+            .buttonStyle(.kawaiiPrimary(isDisabled: viewModel.isSubmitting || session.participants.isEmpty))
             .disabled(viewModel.isSubmitting || session.participants.isEmpty)
 
             // GRO-34: cancel before launch — no summary shown because startAt is nil.
@@ -114,23 +112,25 @@ struct SessionView: View {
             } label: {
                 HStack {
                     Image(systemName: "figure.stand.line.dotted.figure.stand")
+                        .foregroundStyle(Color.theme.text)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("End-early vote in progress")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
                         Text("Tap to vote · \(vote.secondsRemaining)s remaining")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.55))
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.theme.text.opacity(0.35))
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-            .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            .background(Color.theme.primary.opacity(0.2), in: RoundedRectangle(cornerRadius: 12))
         } else if session.breakVotingEnabled {
             // Show the initiate button (with context-sensitive disabled reason).
             VStack(spacing: 6) {
@@ -140,14 +140,13 @@ struct SessionView: View {
                     Label("Vote to End Early", systemImage: "figure.stand.line.dotted.figure.stand")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .tint(.blue)
+                .buttonStyle(.kawaiiOutlined)
                 .disabled(!session.canInitiateBreakVote || viewModel.isSubmitting)
 
                 if let reason = breakVoteDisabledReason(session) {
                     Text(reason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
                         .multilineTextAlignment(.center)
                 }
             }
@@ -186,36 +185,38 @@ struct SessionView: View {
                         // GRO-19: Focus countdown — survives navigation pushes via SessionViewModel.
                         VStack(spacing: 8) {
                             Text("Session Active")
-                                .font(.headline)
-                                .foregroundStyle(.orange)
-                            // GRO-40: back-to-back cycle progress.
-                            if session.isPomodoroCycle {
-                                Text(session.cycleProgressLabel)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                            }
+                                .font(.theme.headline())
+                                .foregroundStyle(Color.theme.text)
+
+                                // GRO-40: back-to-back cycle progress.
+                                if session.isPomodoroCycle {
+                                    Text(session.cycleProgressLabel)
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                }
                             Text(viewModel.formattedCountdown)
                                 .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.theme.text)
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color.theme.primary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
                     }
                 } else {
                     // Banner for observers / late-joiners who haven't joined yet.
                     VStack(spacing: 8) {
                         Text("Session In Progress")
-                            .font(.headline)
-                            .foregroundStyle(.orange)
+                            .font(.theme.headline())
+                            .foregroundStyle(Color.theme.text)
                         Text("\(session.durationMin)-minute session · in progress")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text.opacity(0.6))
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.theme.primary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
                 }
 
                 // GRO-18: Roster
@@ -251,10 +252,8 @@ struct SessionView: View {
                         Task { await viewModel.joinLobby() }
                     } label: {
                         Label("Join Active Session", systemImage: "person.badge.plus")
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .buttonStyle(.kawaiiPrimary(isDisabled: viewModel.isSubmitting))
                     .disabled(viewModel.isSubmitting)
                 }
             }
@@ -277,16 +276,16 @@ struct SessionView: View {
             // Header
             VStack(spacing: 4) {
                 Label(longBreak ? "Long Break" : "Break Time", systemImage: "cup.and.saucer.fill")
-                    .font(.headline)
+                    .font(.theme.headline())
                     .foregroundStyle(viewModel.isBreakPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.green))
 
                 if viewModel.isBreakPaused {
                     Label("Paused", systemImage: "pause.circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                        .background(Color.theme.surface, in: Capsule())
                 }
 
                 if session.isPomodoroCycle && session.hasMoreSessionsInCycle {
@@ -301,11 +300,11 @@ struct SessionView: View {
                 .font(.system(size: 48, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
-                .foregroundStyle(viewModel.isBreakPaused ? .secondary : .primary)
+                .foregroundStyle(viewModel.isBreakPaused ? Color.theme.text.opacity(0.5) : Color.theme.text)
 
             Text(viewModel.isBreakPaused ? "Host has paused the break." : "Shields are down — enjoy your break!")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.theme.body())
+                .foregroundStyle(Color.theme.text.opacity(0.6))
                 .multilineTextAlignment(.center)
 
             // Host-only controls
@@ -326,10 +325,8 @@ struct SessionView: View {
                                 viewModel.isBreakPaused ? "Resume" : "Pause",
                                 systemImage: viewModel.isBreakPaused ? "play.fill" : "pause.fill"
                             )
-                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(viewModel.isBreakPaused ? .green : .orange)
+                        .buttonStyle(.kawaiiOutlined)
                         .disabled(viewModel.isSubmitting)
 
                         // Skip the rest of THIS break only — moves straight into the next
@@ -340,10 +337,9 @@ struct SessionView: View {
                             Label("Skip Break", systemImage: "forward.fill")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(.blue)
+                        .buttonStyle(.kawaiiOutlined)
                         .disabled(viewModel.isSubmitting)
-                    }
+
 
                     // End the whole cycle early, right from the break.
                     Button(role: .destructive) {
@@ -353,16 +349,14 @@ struct SessionView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    .tint(.red)
                     .disabled(viewModel.isSubmitting)
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(
-            (viewModel.isBreakPaused ? Color.secondary : Color.green).opacity(0.10),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
+        .background(Color.theme.secondary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
