@@ -40,6 +40,16 @@ enum StudyHallConstants {
     /// Read by StudyHallMonitor to apply the right shield policy when intervalDidStart fires.
     static let strictModeKey = "studyHall.strictMode"
 
+    // GRO-30: personal (solo, non-group) session opened-app tracking.
+    // Solo sessions started from the Home page never write an `ActiveSessionContext`
+    // (there's no group/session/user to sync to Firestore), so Shield/Monitor extensions
+    // have nothing to attribute an "opened blocked app" attempt to. This local-only counter
+    // lets the extensions log the attempt anyway so the personal summary can reflect it.
+    /// Bool — whether a solo focus session is currently active.
+    static let personalSessionActiveKey = "studyHall.personalSessionActive"
+    /// Int — number of "opened blocked app" attempts during the current personal session.
+    static let personalSessionOpenedCountKey = "studyHall.personalSessionOpenedCount"
+
     static let backgroundURLSessionIdentifiers = [
         backgroundURLSessionIdentifier,
         shieldBackgroundURLSessionIdentifier,

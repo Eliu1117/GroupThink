@@ -56,6 +56,12 @@ enum ExtensionFirebaseWriter {
         // the nil case internally and is safe to call unconditionally.
         ExtensionSessionBridge.enqueuePendingOpenedFallback()
 
+        // GRO-30: also log against a solo (non-group) session if one is active. This is a
+        // no-op unless the main app marked a personal session active, so it's safe to call
+        // unconditionally alongside the group fallback above — the two paths are mutually
+        // exclusive in practice (Home page never sets a group ActiveSessionContext).
+        ExtensionSessionBridge.recordPersonalOpenedAttemptIfActive()
+
         guard let context else {
             print("[\(source.logLabel)] Missing session context — direct upload skipped; fallback queued if context was available")
             return

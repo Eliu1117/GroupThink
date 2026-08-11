@@ -10,6 +10,8 @@ import Foundation
 private enum BridgeKeys {
     static let appGroupID = "group.com.davechengapps.screentimedemo"
     static let pendingOpenedEventsKey = "studyHall.pendingOpenedEvents"
+    static let personalSessionActiveKey = "studyHall.personalSessionActive"
+    static let personalSessionOpenedCountKey = "studyHall.personalSessionOpenedCount"
 }
 
 private struct PendingOpenedEvent: Codable {
@@ -32,6 +34,21 @@ enum ExtensionSessionBridge {
 
         enqueuePendingOpened(for: context)
         print("[Extension] Queued opened fallback for \(context.userUID)")
+    }
+
+    /// GRO-30: logs an "opened blocked app" attempt for a solo Home-page session. Unlike the
+    /// group path this never touches Firestore or `ExtensionSessionContext` — a personal
+    /// session has no group to sync to, so the count just lives in the App Group until the
+    /// main app drains it into the personal session summary.
+    static func recordPersonalOpenedAttemptIfActive() {
+        guard let defaults, defaults.bool(forKey: BridgeKeys.personalSessionActiveKey) else {
+            return
+        }
+
+        let current = defaults.integer(forKey: BridgeKeys.personalSessionOpenedCountKey)
+        defaults.set(current + 1, forKey: BridgeKeys.personalSessionOpenedCountKey)
+        defaults.synchronize()
+        print("[Extension] Logged personal session opened attempt (count: \(current + 1))")
     }
 
     private static func enqueuePendingOpened(for context: ExtensionSessionContext) {

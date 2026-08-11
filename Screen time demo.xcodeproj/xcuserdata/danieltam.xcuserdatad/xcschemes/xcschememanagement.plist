@@ -12,22 +12,45 @@
 		<key>Screen time demo.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>4</integer>
 		</dict>
 		<key>StudyHallMonitor.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>2</integer>
+			<integer>0</integer>
 		</dict>
 		<key>StudyHallShield.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>1</integer>
 		</dict>
 		<key>StudyHallShieldUI.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>1</integer>
+			<integer>3</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>AA36A9C02FCE14D10023BF62</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B1C2D3E32FCE90010023BF62</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>C1C2D4022FCE90010023BF62</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>D1D2D5022FCE90010023BF62</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

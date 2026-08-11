@@ -142,6 +142,27 @@ final class SessionContextStore {
         defaults?.synchronize()
     }
 
+    // MARK: - Personal (solo) session opened-app tracking (GRO-30)
+
+    /// Marks a solo Home-page session as active and resets the opened-attempt counter, so
+    /// Shield/Monitor extensions have something to log against even without a group session.
+    func startPersonalSession() {
+        defaults?.set(true, forKey: StudyHallConstants.personalSessionActiveKey)
+        defaults?.set(0, forKey: StudyHallConstants.personalSessionOpenedCountKey)
+        defaults?.synchronize()
+    }
+
+    /// Clears the active flag and returns however many "opened blocked app" attempts were
+    /// logged during the session, for use in the personal session summary.
+    @discardableResult
+    func endPersonalSession() -> Int {
+        let count = defaults?.integer(forKey: StudyHallConstants.personalSessionOpenedCountKey) ?? 0
+        defaults?.set(false, forKey: StudyHallConstants.personalSessionActiveKey)
+        defaults?.set(0, forKey: StudyHallConstants.personalSessionOpenedCountKey)
+        defaults?.synchronize()
+        return count
+    }
+
     func clearAll() {
         setActiveSession(nil)
         defaults?.removeObject(forKey: StudyHallConstants.pendingOpenedEventsKey)
@@ -150,6 +171,8 @@ final class SessionContextStore {
         defaults?.removeObject(forKey: StudyHallConstants.lastOpenedReportKey)
         defaults?.removeObject(forKey: StudyHallConstants.lastOpenedReportAtKey)
         defaults?.set(false, forKey: StudyHallConstants.strictModeKey)
+        defaults?.set(false, forKey: StudyHallConstants.personalSessionActiveKey)
+        defaults?.set(0, forKey: StudyHallConstants.personalSessionOpenedCountKey)
         defaults?.synchronize()
     }
 
