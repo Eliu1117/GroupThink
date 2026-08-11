@@ -58,6 +58,7 @@ struct DowntimeSettingsView: View {
                 requestOverrideSection
             }
         }
+        .kawaiiListBackground()
         .navigationTitle("Downtime")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -454,6 +455,7 @@ private struct RequestOverrideSheet: View {
                     }
                 }
             }
+            .kawaiiListBackground()
             .navigationTitle("Request Override")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

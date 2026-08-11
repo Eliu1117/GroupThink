@@ -72,6 +72,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             .padding()
+            .kawaiiBackground()
             .navigationTitle("Home")
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
             .familyActivityPicker(isPresented: $showWhitelistPicker, selection: $whitelistSelection)
@@ -99,45 +100,48 @@ struct ContentView: View {
                     authManager.isAuthorized ? "Authorized" : "Not Authorized",
                     systemImage: authManager.isAuthorized ? "checkmark.shield.fill" : "xmark.shield"
                 )
-                .foregroundStyle(authManager.isAuthorized ? .green : .secondary)
+                .font(.theme.body())
+                .foregroundStyle(authManager.isAuthorized ? Color.theme.text : Color.theme.text.opacity(0.5))
                 Spacer()
             }
 
             HStack {
                 Text("Selected to block")
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
                 Spacer()
                 Text("\(selectedCount)")
-                    .fontWeight(.semibold)
+                    .font(.theme.headline())
+                    .foregroundStyle(Color.theme.text)
             }
 
             if isBlocking {
                 VStack(spacing: 8) {
                     HStack(spacing: 6) {
                         Text("Focus Active")
-                            .font(.headline)
-                            .foregroundStyle(.orange)
+                            .font(.theme.headline())
+                            .foregroundStyle(Color.theme.text)
                         if strictMode {
                             Label("Strict", systemImage: "lock.shield.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.purple)
+                                .font(.theme.caption())
+                                .foregroundStyle(Color.theme.text)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
-                                .background(.purple.opacity(0.12), in: Capsule())
+                                .background(Color.theme.secondary, in: Capsule())
                         }
                     }
                     Text(formattedTime(timeRemaining))
                         .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.theme.text)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                .background(Color.theme.primary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
             }
         }
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .kawaiiCard()
     }
 
     // MARK: - Duration picker (GRO-36)
@@ -145,16 +149,19 @@ struct ContentView: View {
     private var durationPicker: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Duration")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.theme.caption())
+                .foregroundStyle(Color.theme.text.opacity(0.6))
             Picker("Duration", selection: $selectedDurationMin) {
                 ForEach(Self.durationPresets, id: \.self) { mins in
                     Text("\(mins)m").tag(mins)
                 }
             }
             .pickerStyle(.segmented)
+            .tint(Color.theme.primary)
             .disabled(isBlocking)
         }
+        .padding(12)
+        .background(Color.theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - Strict mode section (GRO-36)
@@ -163,15 +170,19 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 4) {
             Toggle(isOn: $strictMode) {
                 Label("Strict Mode", systemImage: "lock.shield.fill")
-                    .foregroundStyle(strictMode ? .purple : .primary)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
             }
+            .tint(Color.theme.primary)
             .disabled(isBlocking)
             if strictMode {
                 Text("All apps blocked except your whitelist. A blocklist is optional.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.caption(11))
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
             }
         }
+        .padding(12)
+        .background(Color.theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - Buttons
@@ -181,9 +192,8 @@ struct ContentView: View {
             Task { await authManager.requestAuthorization() }
         } label: {
             Label("Request Screen Time Permission", systemImage: "hand.raised.fill")
-                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.kawaiiPrimary())
     }
 
     private var chooseAppsButton: some View {
@@ -194,9 +204,8 @@ struct ContentView: View {
                 selectedCount > 0 ? "Apps to Block (\(selectedCount))" : "Choose Apps to Block",
                 systemImage: "apps.iphone"
             )
-            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.kawaiiOutlined)
         .disabled(!authManager.isAuthorized || isBlocking)
     }
 
@@ -211,15 +220,13 @@ struct ContentView: View {
                         : "Choose Strict Mode Whitelist",
                     systemImage: "checkmark.shield"
                 )
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .tint(.green)
+            .buttonStyle(.kawaiiOutlined)
             .disabled(!authManager.isAuthorized || isBlocking)
 
             Text("Apps that stay available when strict mode blocks everything else. Only individual apps count — categories are ignored.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.theme.caption(11))
+                .foregroundStyle(Color.theme.text.opacity(0.55))
                 .multilineTextAlignment(.center)
         }
     }
@@ -229,10 +236,8 @@ struct ContentView: View {
             startBlock()
         } label: {
             Label("Start \(selectedDurationMin)-Min Focus Block", systemImage: "timer")
-                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(strictMode ? .purple : .orange)
+        .buttonStyle(.kawaiiPrimary(isDisabled: !canStartBlock))
         .disabled(!canStartBlock)
     }
 
@@ -244,6 +249,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
+        .tint(.red)
         .disabled(!isBlocking)
     }
 

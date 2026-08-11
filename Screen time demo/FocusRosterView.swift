@@ -17,12 +17,13 @@ struct FocusRosterView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Focus Roster", systemImage: "list.bullet.rectangle.portrait")
-                .font(.headline)
+                .font(.theme.headline())
+                .foregroundStyle(Color.theme.text)
 
             if sortedParticipants.isEmpty {
                 Text("Waiting for participants…")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text.opacity(0.55))
             } else {
                 ForEach(sortedParticipants) { participant in
                     FocusRosterRow(
@@ -72,19 +73,21 @@ private struct FocusRosterRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(name)
-                        .font(.body.weight(.medium))
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text)
 
                     if isHost {
                         Text("Host")
-                            .font(.caption2.bold())
+                            .font(.theme.caption(10))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.tint.opacity(0.15), in: Capsule())
+                            .background(Color.theme.primary.opacity(0.5), in: Capsule())
+                            .foregroundStyle(Color.theme.text)
                     }
                 }
 
                 Text(state.label)
-                    .font(.caption)
+                    .font(.theme.caption())
                     .foregroundStyle(presenceColor)
             }
 
@@ -93,14 +96,18 @@ private struct FocusRosterRow: View {
             Image(systemName: state.systemImage)
                 .foregroundStyle(presenceColor)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
         .padding(.horizontal, 12)
-        .background(presenceColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
     }
 
+    /// Functional status colors — kept distinct from the pastel palette so
+    /// presence state remains readable at a glance, per the reference screen's
+    /// use of accent colors atop the neutral kawaii base.
     private var presenceColor: Color {
         switch state {
-        case .focused: return .green
+        case .focused: return Color(hex: "6FA287")
         case .left: return .yellow
         case .opened: return .red
         case .break: return .orange

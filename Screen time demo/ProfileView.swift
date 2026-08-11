@@ -42,8 +42,10 @@ struct ProfileView: View {
                         profileViewModel.startListening(userID: nil)
                         authViewModel.signOut()
                     }
+                    .tint(.red)
                 }
             }
+            .kawaiiListBackground()
             .navigationTitle("Profile")
             .onAppear {
                 Task {
@@ -61,41 +63,49 @@ struct ProfileView: View {
 
     private var profileHeaderSection: some View {
         Section {
-            HStack(spacing: 16) {
+            VStack(spacing: 12) {
                 avatarView
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(spacing: 4) {
                     Text(displayName)
-                        .font(.title2.bold())
+                        .font(.theme.heading(20))
+                        .foregroundStyle(Color.theme.text)
 
                     if let email = authViewModel.user?.email {
                         Text(email)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.55))
                     }
                 }
-
-                Spacer(minLength: 0)
             }
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
         }
     }
 
     private func statsSection(_ profile: UserProfile) -> some View {
-        Section("Stats") {
-            LabeledContent {
-                Text("\(profile.focusMinutes)")
-                    .fontWeight(.semibold)
-            } label: {
-                Label("Focus Minutes", systemImage: "clock.fill")
+        Section {
+            HStack(spacing: 12) {
+                KawaiiStatBlock(
+                    icon: "clock.fill",
+                    iconTint: Color.theme.primary,
+                    value: "\(profile.focusMinutes)",
+                    label: "Focus Minutes"
+                )
+                KawaiiStatBlock(
+                    icon: "flame.fill",
+                    iconTint: Color.theme.secondary,
+                    value: "\(profile.currentStreak)",
+                    label: "Day Streak"
+                )
             }
-
-            LabeledContent {
-                Text("\(profile.currentStreak)")
-                    .fontWeight(.semibold)
-            } label: {
-                Label("Current Streak", systemImage: "flame.fill")
-            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+        } header: {
+            Text("Stats")
+                .foregroundStyle(Color.theme.text.opacity(0.6))
         }
     }
 
@@ -116,8 +126,9 @@ struct ProfileView: View {
                     avatarPlaceholder
                 }
             }
-            .frame(width: 72, height: 72)
+            .frame(width: 88, height: 88)
             .clipShape(Circle())
+            .overlay(Circle().stroke(Color.theme.surface, lineWidth: 4))
         } else {
             avatarPlaceholder
         }
@@ -125,12 +136,13 @@ struct ProfileView: View {
 
     private var avatarPlaceholder: some View {
         Circle()
-            .fill(.quaternary)
-            .frame(width: 72, height: 72)
+            .fill(Color.theme.primary.opacity(0.4))
+            .frame(width: 88, height: 88)
+            .overlay(Circle().stroke(Color.theme.surface, lineWidth: 4))
             .overlay {
                 Text(initials)
-                    .font(.title2.bold())
-                    .foregroundStyle(.secondary)
+                    .font(.theme.heading(24))
+                    .foregroundStyle(Color.theme.text)
             }
     }
 

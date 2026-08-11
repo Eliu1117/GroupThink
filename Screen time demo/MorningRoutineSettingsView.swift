@@ -57,6 +57,7 @@ struct RoutineSettingsView: View {
                 }
             }
         }
+        .kawaiiListBackground()
         .navigationTitle("Routines")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
