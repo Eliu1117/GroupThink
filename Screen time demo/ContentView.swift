@@ -95,7 +95,7 @@ struct ContentView: View {
                 .font(.theme.heading(40))
                 .foregroundStyle(Color.theme.text)
 
-            Text("Customize your Block list and White list here, or start an individual Focus Block session.")
+            Text("Customize your Blocklist and Whitelist here, or start an individual Focus Block session.")
                 .font(.theme.body())
                 .foregroundStyle(Color.theme.text.opacity(0.6))
         }
@@ -253,14 +253,13 @@ struct ContentView: View {
     }
 
     private var stopButton: some View {
-        Button(role: .destructive) {
+        Button {
             stopBlock()
         } label: {
             Label("Stop / Unblock Now", systemImage: "stop.fill")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .tint(.red)
+        .buttonStyle(.kawaiiDestructive(isDisabled: !isBlocking))
         .disabled(!isBlocking)
     }
 

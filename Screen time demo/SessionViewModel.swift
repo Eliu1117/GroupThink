@@ -169,7 +169,11 @@ final class SessionViewModel: ObservableObject {
 
     /// GRO-40: `totalSessionsInCycle` > 1 configures a back-to-back (Pomodoro-style) cycle —
     /// automatic breaks are inserted between sub-sessions until the last one finishes.
-    func createSession(durationMin: Int = 25, totalSessionsInCycle: Int = 1) async -> Bool {
+    func createSession(
+        durationMin: Int = 25,
+        totalSessionsInCycle: Int = 1,
+        pomodoroConfiguration: PomodoroConfiguration = .defaults
+    ) async -> Bool {
         guard let groupID, let currentUID else {
             errorMessage = SessionServiceError.notSignedIn.localizedDescription
             return false
@@ -195,7 +199,8 @@ final class SessionViewModel: ObservableObject {
                 breakVotingEnabled: breakVotingEnabled,
                 breakWindowSeconds: breakWindowSeconds,
                 breakCooldownMinutes: cooldownMinutes,
-                totalSessionsInCycle: totalSessionsInCycle
+                totalSessionsInCycle: totalSessionsInCycle,
+                pomodoroConfiguration: pomodoroConfiguration
             )
             let capturedGroupID = groupID
             // GRO-33: persist last-used duration so all members' pickers stay in sync.
@@ -818,7 +823,7 @@ final class SessionViewModel: ObservableObject {
 
         let breakSeconds = PomodoroBreakCalculator.breakSeconds(
             afterSessionIndex: session.currentSessionIndex,
-            sessionDurationMin: session.durationMin
+            configuration: session.pomodoroConfiguration
         )
 
         do {

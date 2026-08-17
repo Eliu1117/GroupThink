@@ -93,6 +93,23 @@ struct StudySession: Identifiable, Equatable {
     /// sessions/breaks ran their course.
     let cycleEndedEarly: Bool
 
+    // MARK: - Pomodoro break settings (snapshotted at cycle start)
+    let pomodoroBreakMin: Int
+    /// 0 = no long breaks; otherwise every Nth inter-session break is long.
+    let pomodoroLongBreakEveryN: Int
+    let pomodoroLongBreakMin: Int
+
+    var pomodoroConfiguration: PomodoroConfiguration {
+        PomodoroConfiguration(
+            standardBreakMin: pomodoroBreakMin,
+            longBreakEnabled: pomodoroLongBreakEveryN > 0,
+            longBreakEveryN: pomodoroLongBreakEveryN > 0
+                ? pomodoroLongBreakEveryN
+                : PomodoroConfiguration.defaultLongBreakEveryN,
+            longBreakMin: pomodoroLongBreakMin
+        )
+    }
+
     /// Initialises from the well-known `sessions/current` document.
     /// `id` is taken from the stored `sessionId` UUID field so stats idempotency
     /// works across session resets without relying on the document's Firestore ID.
@@ -148,6 +165,11 @@ struct StudySession: Identifiable, Equatable {
         self.totalSessionsInCycle = max(1, data["totalSessionsInCycle"] as? Int ?? 1)
         self.currentSessionIndex = max(1, data["currentSessionIndex"] as? Int ?? 1)
         self.cycleEndedEarly = data["cycleEndedEarly"] as? Bool ?? false
+
+        let pomodoro = PomodoroConfiguration.from(sessionData: data, sessionDurationMin: durationMin)
+        self.pomodoroBreakMin = pomodoro.standardBreakMin
+        self.pomodoroLongBreakEveryN = pomodoro.longBreakEnabled ? pomodoro.longBreakEveryN : 0
+        self.pomodoroLongBreakMin = pomodoro.longBreakMin
 
         if let timestamp = data["startAt"] as? Timestamp {
             startAt = timestamp.dateValue()
