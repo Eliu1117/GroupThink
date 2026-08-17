@@ -27,9 +27,41 @@ struct PendingOpenedEvent: Codable, Equatable {
 /// different tab), so relying on a single view's lifecycle to trigger the flush means queued
 /// attempts can sit unflushed indefinitely. Call `flush()` from an app-wide scene-phase
 /// observer so it fires no matter what screen the user returns to.
+///
+/// `flush()` is called from more than one place on the SAME scene-phase transition (the
+/// app-wide observer in `MainTabView` AND `SessionViewModel.handleScenePhase`, reached via
+/// `GroupDetailView`'s own observer), each as an independent, uncoordinated `Task`. Since
+/// `SessionContextStore.drainPendingOpenedEvents()` reads-then-clears the queue with no
+/// synchronization, two concurrent callers could both read the same events before either
+/// cleared them, double-reporting the same "opened" attempt to Firestore. The `actor` below
+/// makes concurrent `flush()` calls single-flight: only one drain runs at a time, and any
+/// call that arrives while one is in progress awaits that SAME in-flight result instead of
+/// starting its own redundant drain.
 enum PendingOpenedEventFlusher {
+    private actor Coordinator {
+        private var inFlightTask: Task<Bool, Never>?
+
+        func flush() async -> Bool {
+            if let inFlightTask {
+                return await inFlightTask.value
+            }
+
+            let task = Task { await PendingOpenedEventFlusher.performFlush() }
+            inFlightTask = task
+            let result = await task.value
+            inFlightTask = nil
+            return result
+        }
+    }
+
+    private static let coordinator = Coordinator()
+
     @discardableResult
     static func flush() async -> Bool {
+        await coordinator.flush()
+    }
+
+    private static func performFlush() async -> Bool {
         let events = SessionContextStore.shared.drainPendingOpenedEvents()
         guard !events.isEmpty else { return false }
 
