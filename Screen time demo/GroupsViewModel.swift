@@ -59,7 +59,7 @@ final class GroupsViewModel: ObservableObject {
         }
     }
 
-    func createGroup(name: String) async -> Bool {
+    func createGroup(name: String, durationMin: Int = 30) async -> Bool {
         guard let userUID else {
             errorMessage = GroupServiceError.notSignedIn.localizedDescription
             return false
@@ -76,7 +76,11 @@ final class GroupsViewModel: ObservableObject {
         defer { isSubmitting = false }
 
         do {
-            let groupID = try await GroupService.shared.createGroup(name: trimmed, creatorUID: userUID)
+            let groupID = try await GroupService.shared.createGroup(
+                name: trimmed,
+                creatorUID: userUID,
+                durationMin: durationMin
+            )
             pendingNavigationGroupID = groupID
             print("[Groups] Created group \(groupID)")
             return true

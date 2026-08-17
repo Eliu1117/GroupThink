@@ -204,19 +204,12 @@ struct GroupDetailView: View {
             Section {
                 // GRO-28: Duration preset picker — visible to anyone who can start.
                 if canStartSession {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Session Length")
-                            .font(.theme.caption())
-                            .foregroundStyle(Color.theme.text.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Session Length", systemImage: "clock.fill")
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
 
-                        // Segmented picker for the most common durations.
-                        Picker("Duration", selection: $sessionDurationMin) {
-                            ForEach(Self.durationPresets, id: \.self) { mins in
-                                Text("\(mins)m").tag(mins)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .tint(Color.theme.primary)
+                        DurationWheelPicker(totalMinutes: $sessionDurationMin)
                     }
 
                     // GRO-40: back-to-back (Pomodoro) session count. 1 = single session.
@@ -249,20 +242,22 @@ struct GroupDetailView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting))
-                .disabled(!canStartSession || sessionViewModel.isSubmitting)
+                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0))
+                .disabled(!canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
                 .padding(.horizontal, 16)
             } footer: {
                 if !canStartSession {
                     Text("Only the group creator can start a session.")
+                } else if sessionDurationMin == 0 {
+                    Text("Choose a session length to start.")
                 } else if currentGroup.strictMode {
                     Text("Strict mode is on: all apps will be blocked except each member's whitelist.")
                 } else if totalSessionsInCycle > 1 {
                     Text("Host \(totalSessionsInCycle) back-to-back \(sessionDurationMin)-minute sessions, with automatic breaks between them (every 4th is a long break).")
                 } else {
-                    Text("Host a \(sessionDurationMin)-minute focused session for this group.")
+                    Text("Host a \(sessionDurationMin.durationPhrase) focused session for this group.")
                 }
             }
         }

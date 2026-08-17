@@ -42,9 +42,10 @@ final class GroupService {
     // MARK: - Create
 
     /// Creates a group and returns its document ID.
-    func createGroup(name: String, creatorUID: String) async throws -> String {
+    func createGroup(name: String, creatorUID: String, durationMin: Int = 30) async throws -> String {
         let ref = groups.document()
         let inviteCode = try await uniqueInviteCode()
+        let resolvedDuration = max(1, durationMin)
 
         let data: [String: Any] = [
             "name": name,
@@ -56,7 +57,7 @@ final class GroupService {
             "requireBlocklist": true,
             "allowLateJoin": true,
             "creatorOnlyStart": true,
-            "lastSessionDurationMin": 25,
+            "lastSessionDurationMin": resolvedDuration,
         ]
 
         try await ref.setData(data)
