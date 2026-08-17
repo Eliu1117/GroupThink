@@ -307,7 +307,7 @@ struct SessionView: View {
                 .foregroundStyle(Color.theme.text.opacity(0.6))
                 .multilineTextAlignment(.center)
 
-            // Host-only controls
+                        // Host-only controls
             if viewModel.isHost {
                 VStack(spacing: 10) {
                     HStack(spacing: 12) {
@@ -339,7 +339,7 @@ struct SessionView: View {
                         }
                         .buttonStyle(.kawaiiOutlined)
                         .disabled(viewModel.isSubmitting)
-
+                    } // <--- ADD THIS CLOSING BRACE HERE
 
                     // End the whole cycle early, right from the break.
                     Button(role: .destructive) {
