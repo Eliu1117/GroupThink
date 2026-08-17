@@ -41,11 +41,8 @@ struct GroupDetailView: View {
     /// Controls the Routine configuration sheet.
     @State private var showRoutineConfig = false
     /// GRO-28: duration used for the NEXT session created from this screen.
-    /// Seeded from currentGroup.defaultSessionDurationMin and stays in sync with live group changes.
-    @State private var sessionDurationMin: Int = 25
-
-    /// Preset durations shown in the session-start picker (minutes).
-    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
+    /// Seeded from currentGroup.lastSessionDurationMin and stays in sync with live group changes.
+    @State private var sessionDurationMin: Int = 30
 
     /// Live group doc when available; falls back to the pushed snapshot.
     private var currentGroup: Group {
@@ -200,19 +197,12 @@ struct GroupDetailView: View {
             Section {
                 // GRO-28: Duration preset picker — visible to anyone who can start.
                 if canStartSession {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Session Length")
-                            .font(.theme.caption())
-                            .foregroundStyle(Color.theme.text.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Session Length", systemImage: "clock.fill")
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
 
-                        // Segmented picker for the most common durations.
-                        Picker("Duration", selection: $sessionDurationMin) {
-                            ForEach(Self.durationPresets, id: \.self) { mins in
-                                Text("\(mins)m").tag(mins)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .tint(Color.theme.primary)
+                        DurationWheelPicker(totalMinutes: $sessionDurationMin)
                     }
                 }
 
@@ -221,18 +211,20 @@ struct GroupDetailView: View {
                 } label: {
                     Label("Start Study Hall", systemImage: "play.circle.fill")
                 }
-                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting))
-                .disabled(!canStartSession || sessionViewModel.isSubmitting)
+                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0))
+                .disabled(!canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
                 .padding(.horizontal, 16)
             } footer: {
                 if !canStartSession {
                     Text("Only the group creator can start a session.")
+                } else if sessionDurationMin == 0 {
+                    Text("Choose a session length to start.")
                 } else if currentGroup.strictMode {
                     Text("Strict mode is on: all apps will be blocked except each member's whitelist.")
                 } else {
-                    Text("Host a \(sessionDurationMin)-minute focused session for this group.")
+                    Text("Host a \(sessionDurationMin.durationPhrase) focused session for this group.")
                 }
             }
         }

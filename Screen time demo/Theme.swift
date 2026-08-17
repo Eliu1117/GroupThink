@@ -109,6 +109,9 @@ struct KawaiiPrimaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.theme.headline())
             .foregroundStyle(Color.theme.text)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
@@ -145,6 +148,42 @@ extension ButtonStyle where Self == KawaiiPrimaryButtonStyle {
 
 extension ButtonStyle where Self == KawaiiOutlinedButtonStyle {
     static var kawaiiOutlined: KawaiiOutlinedButtonStyle { KawaiiOutlinedButtonStyle() }
+}
+
+// MARK: - Toggle
+
+/// Coffee-brown switch so the off-state thumb matches the outline, not Apple's white.
+struct KawaiiToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 0)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    configuration.isOn.toggle()
+                }
+            } label: {
+                Capsule()
+                    .fill(configuration.isOn ? Color.theme.primary : Color.theme.text.opacity(0.18))
+                    .frame(width: 51, height: 31)
+                    .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                        Circle()
+                            .fill(Color.theme.text)
+                            .padding(3)
+                    }
+                    .overlay(
+                        Capsule().stroke(Color.theme.text.opacity(0.55), lineWidth: 1.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isToggle)
+            .accessibilityValue(configuration.isOn ? "On" : "Off")
+        }
+    }
+}
+
+extension ToggleStyle where Self == KawaiiToggleStyle {
+    static var kawaii: KawaiiToggleStyle { KawaiiToggleStyle() }
 }
 
 // MARK: - Reusable list row

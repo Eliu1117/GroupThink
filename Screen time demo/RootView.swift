@@ -8,17 +8,21 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var authViewModel = AuthViewModel()
+    @ObservedObject private var screenTimeAuth = AuthorizationManager.shared
 
     var body: some View {
         SwiftUI.Group {
-            if authViewModel.isAuthenticated {
-                MainTabView()
-            } else {
+            if !authViewModel.isAuthenticated {
                 LoginView()
+            } else if !screenTimeAuth.isAuthorized {
+                ScreenTimePermissionView()
+            } else {
+                MainTabView()
             }
         }
         .environmentObject(authViewModel)
         .animation(.easeInOut, value: authViewModel.isAuthenticated)
+        .animation(.easeInOut, value: screenTimeAuth.isAuthorized)
         .task(id: authViewModel.isAuthenticated) {
             guard authViewModel.isAuthenticated else { return }
             await PushNotificationService.shared.registerForPushNotifications()

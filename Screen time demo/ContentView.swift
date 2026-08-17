@@ -10,9 +10,6 @@ import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
-    // GRO-36: selectable durations matching the group session presets.
-    private static let durationPresets = [10, 15, 20, 25, 30, 45, 60, 90]
-
     @StateObject private var authManager = AuthorizationManager.shared
 
     @State private var selection = BlocklistStore.shared.selection
@@ -30,7 +27,7 @@ struct ContentView: View {
     @State private var personalSummary: PersonalSessionSummary?
 
     // GRO-36: new controls
-    @State private var selectedDurationMin = 25
+    @State private var selectedDurationMin = 30
     @State private var strictMode = false
 
     private var selectedCount: Int {
@@ -44,36 +41,31 @@ struct ContentView: View {
     private var canStartBlock: Bool {
         guard authManager.isAuthorized, !isBlocking else { return false }
         // In strict mode a blocklist is optional (everything is blocked).
-        return strictMode ? true : selectedCount > 0
+        return selectedDurationMin > 0 && (strictMode ? true : selectedCount > 0)
     }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                statusSection
-
-                VStack(spacing: 12) {
-                    if !authManager.isAuthorized {
-                        permissionButton
+            SwiftUI.Group {
+                if isBlocking {
+                    ScrollView {
+                        activeSessionScreen
+                            .padding()
                     }
-
-                    // GRO-36: duration segmented picker
-                    durationPicker
-
-                    // GRO-36: strict mode toggle
-                    strictModeSection
-
-                    chooseAppsButton
-                    whitelistSection
-                    startBlockButton
-                    stopButton
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            homeHeader
+                            idleControls
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                    }
                 }
-
-                Spacer(minLength: 0)
             }
-            .padding()
             .kawaiiBackground()
-            .navigationTitle("Home")
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar(isBlocking ? .hidden : .visible, for: .tabBar)
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
             .familyActivityPicker(isPresented: $showWhitelistPicker, selection: $whitelistSelection)
             .onChange(of: selection) { _, newValue in
@@ -91,76 +83,100 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Status
+    // MARK: - Header
 
-    private var statusSection: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Label(
-                    authManager.isAuthorized ? "Authorized" : "Not Authorized",
-                    systemImage: authManager.isAuthorized ? "checkmark.shield.fill" : "xmark.shield"
-                )
+    private var homeHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Home")
+                .font(.theme.heading(40))
+                .foregroundStyle(Color.theme.text)
+
+            Text("Customize your Block list and White list here, or start an individual Focus Block session.")
                 .font(.theme.body())
-                .foregroundStyle(authManager.isAuthorized ? Color.theme.text : Color.theme.text.opacity(0.5))
-                Spacer()
-            }
+                .foregroundStyle(Color.theme.text.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            HStack {
-                Text("Selected to block")
-                    .font(.theme.body())
-                    .foregroundStyle(Color.theme.text.opacity(0.6))
-                Spacer()
-                Text("\(selectedCount)")
+    private var idleControls: some View {
+        VStack(spacing: 12) {
+            durationPicker
+            strictModeSection
+            chooseAppsButton
+            whitelistSection
+            startBlockButton
+        }
+    }
+
+    // MARK: - Active session
+
+    private var activeSessionScreen: some View {
+        VStack(spacing: 28) {
+            Spacer(minLength: 40)
+
+            VStack(spacing: 10) {
+                Text("Focus Active")
                     .font(.theme.headline())
                     .foregroundStyle(Color.theme.text)
-            }
 
-            if isBlocking {
-                VStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Text("Focus Active")
-                            .font(.theme.headline())
-                            .foregroundStyle(Color.theme.text)
-                        if strictMode {
-                            Label("Strict", systemImage: "lock.shield.fill")
-                                .font(.theme.caption())
-                                .foregroundStyle(Color.theme.text)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color.theme.secondary, in: Capsule())
-                        }
-                    }
-                    Text(formattedTime(timeRemaining))
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.theme.text)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.theme.primary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+                Text(formattedTime(timeRemaining))
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.theme.text)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 10) {
+                Text("Add time")
+                    .font(.theme.caption())
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
+
+                HStack(spacing: 10) {
+                    addTimeChip(minutes: 5)
+                    addTimeChip(minutes: 15)
+                    addTimeChip(minutes: 30)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            Spacer(minLength: 40)
+
+            stopButton
         }
-        .kawaiiCard()
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 560)
+    }
+
+    private func addTimeChip(minutes: Int) -> some View {
+        Button {
+            addTime(minutes: minutes)
+        } label: {
+            Text("+\(minutes) min")
+                .font(.theme.body(14))
+                .foregroundStyle(Color.theme.text)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color.theme.surface, in: Capsule())
+                .overlay(Capsule().stroke(Color.theme.text.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Duration picker (GRO-36)
 
     private var durationPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Duration")
-                .font(.theme.caption())
-                .foregroundStyle(Color.theme.text.opacity(0.6))
-            Picker("Duration", selection: $selectedDurationMin) {
-                ForEach(Self.durationPresets, id: \.self) { mins in
-                    Text("\(mins)m").tag(mins)
-                }
-            }
-            .pickerStyle(.segmented)
-            .tint(Color.theme.primary)
-            .disabled(isBlocking)
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Duration", systemImage: "clock.fill")
+                .font(.theme.body())
+                .foregroundStyle(Color.theme.text)
+
+            DurationWheelPicker(totalMinutes: $selectedDurationMin, isEnabled: !isBlocking)
         }
-        .padding(12)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .background(Color.theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -173,7 +189,7 @@ struct ContentView: View {
                     .font(.theme.body())
                     .foregroundStyle(Color.theme.text)
             }
-            .tint(Color.theme.primary)
+            .toggleStyle(.kawaii)
             .disabled(isBlocking)
             if strictMode {
                 Text("All apps blocked except your whitelist. A blocklist is optional.")
@@ -186,15 +202,6 @@ struct ContentView: View {
     }
 
     // MARK: - Buttons
-
-    private var permissionButton: some View {
-        Button {
-            Task { await authManager.requestAuthorization() }
-        } label: {
-            Label("Request Screen Time Permission", systemImage: "hand.raised.fill")
-        }
-        .buttonStyle(.kawaiiPrimary())
-    }
 
     private var chooseAppsButton: some View {
         Button {
@@ -235,7 +242,7 @@ struct ContentView: View {
         Button {
             startBlock()
         } label: {
-            Label("Start \(selectedDurationMin)-Min Focus Block", systemImage: "timer")
+            Label("Start a \(selectedDurationMin.durationPhrase) Focus Block", systemImage: "timer")
         }
         .buttonStyle(.kawaiiPrimary(isDisabled: !canStartBlock))
         .disabled(!canStartBlock)
@@ -280,37 +287,50 @@ struct ContentView: View {
         }
         isBlocking = true
         timeRemaining = durationSeconds
+        beginCountdown()
 
-        let endDate = Date().addingTimeInterval(TimeInterval(durationSeconds))
-        // The "openedBlockedApp" backup event must track apps that are actually shielded.
-        // In strict mode that's the personal blocklist minus the whitelist (never the
-        // whitelist itself — the whitelist is what's ALLOWED, not blocked).
-        let monitorSelection = strictMode ? effectiveMonitorSelection() : selection
-        try? SessionActivityScheduler.startMonitoring(until: endDate, selection: monitorSelection)
+        rescheduleMonitoring(remainingSeconds: durationSeconds)
+    }
 
+    private func beginCountdown() {
         blockTask?.cancel()
         blockTask = Task {
-            var remaining = durationSeconds
-            while remaining > 0 {
-                if Task.isCancelled { return }
-                await MainActor.run { timeRemaining = remaining }
+            while !Task.isCancelled {
+                let remaining = await MainActor.run { timeRemaining }
+                guard remaining > 0 else { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if Task.isCancelled { return }
-                remaining -= 1
+                await MainActor.run {
+                    if timeRemaining > 0 {
+                        timeRemaining -= 1
+                    }
+                }
             }
             await MainActor.run {
-                BlockingManager.shared.clear()
-                SessionActivityScheduler.stopMonitoring()
-                SessionContextStore.shared.setStrictMode(false)
-                isBlocking = false
-                timeRemaining = 0
-                blockTask = nil
-                presentPersonalSummary(endedEarly: false)
+                guard isBlocking, timeRemaining <= 0 else { return }
+                finishBlock(endedEarly: false)
             }
         }
     }
 
+    private func addTime(minutes: Int) {
+        guard isBlocking, minutes > 0 else { return }
+        timeRemaining += minutes * 60
+        sessionPlannedDurationMin += minutes
+        rescheduleMonitoring(remainingSeconds: timeRemaining)
+    }
+
+    private func rescheduleMonitoring(remainingSeconds: Int) {
+        let endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
+        let monitorSelection = strictMode ? effectiveMonitorSelection() : selection
+        try? SessionActivityScheduler.startMonitoring(until: endDate, selection: monitorSelection)
+    }
+
     private func stopBlock() {
+        finishBlock(endedEarly: true)
+    }
+
+    private func finishBlock(endedEarly: Bool) {
         let wasBlocking = isBlocking
         blockTask?.cancel()
         blockTask = nil
@@ -320,7 +340,7 @@ struct ContentView: View {
         isBlocking = false
         timeRemaining = 0
         if wasBlocking {
-            presentPersonalSummary(endedEarly: true)
+            presentPersonalSummary(endedEarly: endedEarly)
         }
     }
 
@@ -353,8 +373,12 @@ struct ContentView: View {
     }
 
     private func formattedTime(_ seconds: Int) -> String {
-        let minutes = seconds / 60
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
         let secs = seconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
         return String(format: "%d:%02d", minutes, secs)
     }
 }
