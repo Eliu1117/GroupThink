@@ -41,7 +41,7 @@ final class BreakVoteService {
     // MARK: - Initiate
 
     /// Writes a fresh `activeBreakVote` map to the session document.
-    /// Caller must verify all gate conditions (time lock, cooldown, penaltyLock)
+    /// Caller must verify all gate conditions (time lock, cooldown, not on a break)
     /// before calling — the service does a lightweight idempotency check only.
     func initiateVote(
         groupID: String,
@@ -134,7 +134,6 @@ final class BreakVoteService {
                 transaction.updateData(
                     [
                         "activeBreakVote": voteMap,
-                        "penaltyLock": true,
                         "lastBreakVoteEndedAt": FieldValue.serverTimestamp(),
                     ],
                     forDocument: ref

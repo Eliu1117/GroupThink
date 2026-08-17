@@ -150,20 +150,6 @@ final class GroupService {
         }
     }
 
-    // MARK: - Break vote cross-session penalty (GRO-11)
-
-    /// Called when a break vote passes to flag that the next session must start penalty-locked.
-    func markBreakPassed(groupID: String) async throws {
-        try await groups.document(groupID).updateData(["breakPassedLastSession": true])
-        print("[Groups] breakPassedLastSession set to true for group \(groupID)")
-    }
-
-    /// Called at the start of a new session to consume the cross-session penalty flag.
-    func clearBreakPenalty(groupID: String) async throws {
-        try await groups.document(groupID).updateData(["breakPassedLastSession": false])
-        print("[Groups] breakPassedLastSession cleared for group \(groupID)")
-    }
-
     // MARK: - Session duration (GRO-33)
 
     /// Records the last-used session duration on the group document so all members'

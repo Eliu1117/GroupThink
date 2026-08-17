@@ -46,10 +46,6 @@ struct Group: Identifiable, Equatable, Hashable {
     /// Cooldown as a percentage of total session duration before another vote can start
     /// (default 20 — i.e. 20 % of 25 min = 5 min cooldown). Stored as an integer 1–100.
     let breakCooldownPercent: Int
-    /// True when the most recent session ended via a passed break vote.
-    /// The next session is created with `penaltyLock = true` and this flag is cleared.
-    /// This enforces the every-other-session rule (GRO-11).
-    let breakPassedLastSession: Bool
 
     // MARK: - Downtime settings (GRO-12)
     /// When true, members are encouraged (and eventually enforced) to configure a nightly
@@ -90,7 +86,6 @@ struct Group: Identifiable, Equatable, Hashable {
         self.breakVotingEnabled = data["breakVotingEnabled"] as? Bool ?? false
         self.breakWindowSeconds = data["breakWindowSeconds"] as? Int ?? 120
         self.breakCooldownPercent = data["breakCooldownPercent"] as? Int ?? 20
-        self.breakPassedLastSession = data["breakPassedLastSession"] as? Bool ?? false
         self.lastSessionDurationMin = data["lastSessionDurationMin"] as? Int ?? 25
         self.downtimeEnabled = data["downtimeEnabled"] as? Bool ?? false
         // Reads "morningRoutineEnabled" from Firestore; Swift property is routineEnabled (GRO-32).
@@ -112,7 +107,6 @@ struct Group: Identifiable, Equatable, Hashable {
         breakVotingEnabled: Bool = false,
         breakWindowSeconds: Int = 120,
         breakCooldownPercent: Int = 20,
-        breakPassedLastSession: Bool = false,
         lastSessionDurationMin: Int = 25,
         downtimeEnabled: Bool = false,
         routineEnabled: Bool = false
@@ -131,7 +125,6 @@ struct Group: Identifiable, Equatable, Hashable {
         self.breakVotingEnabled = breakVotingEnabled
         self.breakWindowSeconds = breakWindowSeconds
         self.breakCooldownPercent = breakCooldownPercent
-        self.breakPassedLastSession = breakPassedLastSession
         self.lastSessionDurationMin = lastSessionDurationMin
         self.downtimeEnabled = downtimeEnabled
         self.routineEnabled = routineEnabled

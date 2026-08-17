@@ -68,9 +68,6 @@ struct StudySession: Identifiable, Equatable {
     /// Timestamp when the most recent vote concluded (passed, failed, or expired).
     /// Used to enforce the per-session cooldown.
     let lastBreakVoteEndedAt: Date?
-    /// Set to true when a break vote has already passed in this session.
-    /// Prevents early-end votes from passing again in the same session.
-    let penaltyLock: Bool
     /// The currently active break vote, or nil when no vote is in flight.
     let activeBreakVote: BreakVote?
 
@@ -133,7 +130,6 @@ struct StudySession: Identifiable, Equatable {
         self.breakVotingEnabled = data["breakVotingEnabled"] as? Bool ?? false
         self.breakWindowSeconds = data["breakWindowSeconds"] as? Int ?? 120
         self.breakCooldownMinutes = data["breakCooldownMinutes"] as? Int ?? 0
-        self.penaltyLock = data["penaltyLock"] as? Bool ?? false
         self.lastBreakVoteEndedAt = (data["lastBreakVoteEndedAt"] as? Timestamp)?.dateValue()
         if let voteMap = data["activeBreakVote"] as? [String: Any] {
             activeBreakVote = BreakVote(map: voteMap)
@@ -183,6 +179,15 @@ struct StudySession: Identifiable, Equatable {
         return startAt.addingTimeInterval(TimeInterval(durationMin * 60))
     }
 
+    // MARK: - Empty-session auto-end (GRO-15)
+
+    /// True once at least one participant has joined AND every one of them is currently
+    /// `.left` (backgrounded/departed) — i.e. nobody is actively focused, on a break, or
+    /// mid-shield on this sub-session. Used to auto-terminate a session nobody is left in.
+    var allParticipantsLeft: Bool {
+        status == .active && !participants.isEmpty && participants.values.allSatisfy { $0 == .left }
+    }
+
     // MARK: - Break state helpers (GRO-35)
 
     /// True while a group-approved break is in progress (running or paused).
@@ -224,14 +229,20 @@ struct StudySession: Identifiable, Equatable {
         return Date() >= cooldownEnd
     }
 
-    /// True when all four pre-conditions for initiating a break vote are met.
+    /// True when every pre-condition for initiating a break vote is met.
+    ///
+    /// GRO-45: voting eligibility is now scoped to each sub-session "block" within a
+    /// back-to-back cycle rather than gated at the whole-cycle level (the old GRO-11
+    /// `penaltyLock` cross-cycle rule allowed voting only in every OTHER cycle — removed).
+    /// `!breakIsActive` is the one thing that disables voting "between sessions": the
+    /// inter-session break itself.
     var canInitiateBreakVote: Bool {
         breakVotingEnabled
             && status == .active
+            && !breakIsActive
             && breakTimeLockCleared
             && breakCooldownCleared
             && (activeBreakVote == nil || !activeBreakVote!.isPending)
-            && !penaltyLock
     }
 
     // MARK: - Back-to-back / Pomodoro cycle helpers (GRO-40)

@@ -88,7 +88,6 @@ final class SessionService {
         breakVotingEnabled: Bool = false,
         breakWindowSeconds: Int = 120,
         breakCooldownMinutes: Int = 0,
-        penaltyLock: Bool = false,   // GRO-11: every-other-session rule
         totalSessionsInCycle: Int = 1 // GRO-40: back-to-back (Pomodoro) session count
     ) async throws -> String {
         let ref = activeSessionRef(for: groupID)
@@ -117,8 +116,6 @@ final class SessionService {
             "breakVotingEnabled": breakVotingEnabled,
             "breakWindowSeconds": breakWindowSeconds,
             "breakCooldownMinutes": breakCooldownMinutes,
-            // GRO-11 every-other-session: inherits cross-session penalty from the group flag.
-            "penaltyLock": penaltyLock,
             // GRO-40: back-to-back (Pomodoro) cycle bookkeeping.
             "cycleId": cycleID,
             "totalSessionsInCycle": max(1, totalSessionsInCycle),
@@ -166,7 +163,6 @@ final class SessionService {
             "breakVotingEnabled": session.breakVotingEnabled,
             "breakWindowSeconds": session.breakWindowSeconds,
             "breakCooldownMinutes": session.breakCooldownMinutes,
-            "penaltyLock": false,
             "cycleId": session.cycleId,
             "totalSessionsInCycle": session.totalSessionsInCycle,
             "currentSessionIndex": nextIndex,
