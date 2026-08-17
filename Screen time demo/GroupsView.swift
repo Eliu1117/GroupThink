@@ -24,38 +24,24 @@ struct GroupsView: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            SwiftUI.Group {
-                if viewModel.isLoading && viewModel.groups.isEmpty {
-                    loadingView
-                } else if viewModel.groups.isEmpty {
-                    emptyState
-                } else {
-                    groupsList
-                }
-            }
-            .kawaiiBackground()
-            .navigationTitle("Groups")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            viewModel.clearError()
-                            showCreateGroup = true
-                        } label: {
-                            Label("Create Group", systemImage: "plus")
-                        }
+            VStack(alignment: .leading, spacing: 0) {
+                groupsHeader
+                    .padding(.horizontal)
+                    .padding(.top)
+                    .padding(.bottom, 8)
 
-                        Button {
-                            viewModel.clearError()
-                            showJoinGroup = true
-                        } label: {
-                            Label("Join with Code", systemImage: "envelope")
-                        }
-                    } label: {
-                        Image(systemName: "plus")
+                SwiftUI.Group {
+                    if viewModel.isLoading && viewModel.groups.isEmpty {
+                        loadingView
+                    } else if viewModel.groups.isEmpty {
+                        emptyState
+                    } else {
+                        groupsList
                     }
                 }
             }
+            .kawaiiBackground()
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreateGroup) {
                 CreateGroupView(viewModel: viewModel)
             }
@@ -79,6 +65,47 @@ struct GroupsView: View {
                 viewModel.clearPendingNavigation()
             }
         }
+    }
+
+    // MARK: - Header
+
+    private var groupsHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Groups")
+                    .font(.theme.heading(40))
+                    .foregroundStyle(Color.theme.text)
+
+                Text("Create a study hall group or join one with an invite code.")
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
+            }
+
+            Spacer(minLength: 0)
+
+            Menu {
+                Button {
+                    viewModel.clearError()
+                    showCreateGroup = true
+                } label: {
+                    Label("Create Group", systemImage: "plus")
+                }
+
+                Button {
+                    viewModel.clearError()
+                    showJoinGroup = true
+                } label: {
+                    Label("Join with Code", systemImage: "envelope")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.theme.headline())
+                    .foregroundStyle(Color.theme.text)
+                    .frame(width: 36, height: 36)
+                    .background(Color.theme.surface, in: Circle())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - List

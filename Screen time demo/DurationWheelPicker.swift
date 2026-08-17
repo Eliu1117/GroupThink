@@ -11,6 +11,10 @@ struct DurationWheelPicker: View {
     @Binding var totalMinutes: Int
     var isEnabled: Bool = true
     var maxHours: Int = 23
+    var wheelHeight: CGFloat = 148
+    var valueFontSize: CGFloat = 22
+
+    private var valueFont: Font { .theme.heading(valueFontSize) }
 
     private var hourBinding: Binding<Int> {
         Binding(
@@ -37,7 +41,7 @@ struct DurationWheelPicker: View {
             Picker("Hours", selection: hourBinding) {
                 ForEach(0...maxHours, id: \.self) { value in
                     Text("\(value)")
-                        .font(.theme.heading(22))
+                        .font(valueFont)
                         .foregroundStyle(Color.theme.text)
                         .tag(value)
                 }
@@ -55,7 +59,7 @@ struct DurationWheelPicker: View {
             Picker("Minutes", selection: minuteBinding) {
                 ForEach(0..<60, id: \.self) { value in
                     Text(String(format: "%02d", value))
-                        .font(.theme.heading(22))
+                        .font(valueFont)
                         .foregroundStyle(Color.theme.text)
                         .tag(value)
                 }
@@ -70,7 +74,46 @@ struct DurationWheelPicker: View {
                 .foregroundStyle(Color.theme.text)
                 .padding(.trailing, 8)
         }
-        .frame(height: 148)
+        .frame(height: wheelHeight)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// Single-column wheel picker for small integer ranges (session counts, break minutes, etc.).
+struct WheelIntPicker: View {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var suffix: String = ""
+    var isEnabled: Bool = true
+    var wheelHeight: CGFloat = 110
+    var valueFontSize: CGFloat = 18
+
+    private var valueFont: Font { .theme.heading(valueFontSize) }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Picker("", selection: $value) {
+                ForEach(Array(range), id: \.self) { number in
+                    Text("\(number)")
+                        .font(valueFont)
+                        .foregroundStyle(Color.theme.text)
+                        .tag(number)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .accessibilityLabel(suffix.isEmpty ? "Value" : suffix)
+
+            if !suffix.isEmpty {
+                Text(suffix)
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
+                    .padding(.trailing, 8)
+            }
+        }
+        .frame(height: wheelHeight)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.45)
     }

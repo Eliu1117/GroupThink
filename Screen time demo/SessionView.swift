@@ -88,14 +88,13 @@ struct SessionView: View {
             .disabled(viewModel.isSubmitting || session.participants.isEmpty)
 
             // GRO-34: cancel before launch — no summary shown because startAt is nil.
-            Button(role: .destructive) {
+            Button {
                 Task { await viewModel.endSession() }
             } label: {
                 Label("Cancel Session", systemImage: "xmark.circle.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .tint(.red)
+            .buttonStyle(.kawaiiDestructive(isDisabled: viewModel.isSubmitting))
             .disabled(viewModel.isSubmitting)
         }
     }
@@ -225,24 +224,16 @@ struct SessionView: View {
                     hostUid: session.hostUid
                 )
 
-                // Hide end-session / break vote controls while a break is running.
-                if viewModel.isInLobby, !viewModel.isOnBreak {
+                // Hide break vote controls while a break is running.
+                if viewModel.isInLobby {
                     if viewModel.isHost {
-                        Button(role: .destructive) {
-                            Task { await viewModel.endCycleEarly() }
-                        } label: {
-                            Label(
-                                session.isPomodoroCycle ? "End Cycle Early" : "End Session",
-                                systemImage: "stop.fill"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(viewModel.isSubmitting)
+                        endEarlyButton(session)
                     }
 
-                    // GRO-11: Break voting controls
-                    breakVoteControls(session)
+                    if !viewModel.isOnBreak {
+                        // GRO-11: Break voting controls
+                        breakVoteControls(session)
+                    }
                 }
 
                 // GRO-14: Late-join button
@@ -260,23 +251,50 @@ struct SessionView: View {
         }
     }
 
+    // MARK: - End early (matches solo Home stop button)
+
+    private func endEarlyButton(_ session: StudySession) -> some View {
+        Button {
+            Task { await viewModel.endCycleEarly() }
+        } label: {
+            Label(endEarlyButtonTitle(session), systemImage: "stop.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.kawaiiDestructive(isDisabled: viewModel.isSubmitting))
+        .disabled(viewModel.isSubmitting)
+    }
+
+    private func endEarlyButtonTitle(_ session: StudySession) -> String {
+        if session.isPomodoroCycle {
+            return "End Cycle Early"
+        }
+        if viewModel.isOnBreak {
+            return "End Break"
+        }
+        return "End Session"
+    }
+
     // MARK: - Break timer card (GRO-35 / GRO-40)
 
     /// GRO-40: breaks are now exclusively the automatic inter-session pauses in a
     /// back-to-back cycle, so `isLongBreak` reflects the Pomodoro "every 4th break" rule.
     private func isLongBreak(_ session: StudySession) -> Bool {
-        PomodoroBreakCalculator.isLongBreak(afterSessionIndex: session.currentSessionIndex)
+        PomodoroBreakCalculator.isLongBreak(
+            afterSessionIndex: session.currentSessionIndex,
+            configuration: session.pomodoroConfiguration
+        )
     }
 
     private func breakTimerCard(_ session: StudySession) -> some View {
         let longBreak = isLongBreak(session)
+        let breakAccent = viewModel.isBreakPaused ? Color.theme.text.opacity(0.55) : Color.theme.forestGreen
 
         return VStack(spacing: 16) {
             // Header
             VStack(spacing: 4) {
                 Label(longBreak ? "Long Break" : "Break Time", systemImage: "cup.and.saucer.fill")
                     .font(.theme.headline())
-                    .foregroundStyle(viewModel.isBreakPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.green))
+                    .foregroundStyle(breakAccent)
 
                 if viewModel.isBreakPaused {
                     Label("Paused", systemImage: "pause.circle.fill")
@@ -301,61 +319,52 @@ struct SessionView: View {
                 .contentTransition(.numericText())
                 .foregroundStyle(viewModel.isBreakPaused ? Color.theme.text.opacity(0.5) : Color.theme.text)
 
-            Text(viewModel.isBreakPaused ? "Host has paused the break." : "Shields are down — enjoy your break!")
+            Text(viewModel.isBreakPaused ? "Host has paused the break." : "Apps are unblocked! Enjoy your break.")
                 .font(.theme.body())
                 .foregroundStyle(Color.theme.text.opacity(0.6))
                 .multilineTextAlignment(.center)
 
-                        // Host-only controls
+            // Host-only controls
             if viewModel.isHost {
-                VStack(spacing: 10) {
-                    HStack(spacing: 12) {
-                        // Pause / Resume
-                        Button {
-                            Task {
-                                if viewModel.isBreakPaused {
-                                    await viewModel.resumeBreak()
-                                } else {
-                                    await viewModel.pauseBreak()
-                                }
+                HStack(spacing: 12) {
+                    breakControlButton(
+                        title: viewModel.isBreakPaused ? "Resume" : "Pause",
+                        systemImage: viewModel.isBreakPaused ? "play.fill" : "pause.fill"
+                    ) {
+                        Task {
+                            if viewModel.isBreakPaused {
+                                await viewModel.resumeBreak()
+                            } else {
+                                await viewModel.pauseBreak()
                             }
-                        } label: {
-                            Label(
-                                viewModel.isBreakPaused ? "Resume" : "Pause",
-                                systemImage: viewModel.isBreakPaused ? "play.fill" : "pause.fill"
-                            )
                         }
-                        .buttonStyle(.kawaiiOutlined)
-                        .disabled(viewModel.isSubmitting)
-
-                        // Skip the rest of THIS break only — moves straight into the next
-                        // sub-session (or ends the session, if this was the last one).
-                        Button {
-                            Task { await viewModel.endBreakEarly() }
-                        } label: {
-                            Label("Skip Break", systemImage: "forward.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.kawaiiOutlined)
-                        .disabled(viewModel.isSubmitting)
-                    } // <--- ADD THIS CLOSING BRACE HERE
-
-                    // End the whole cycle early, right from the break.
-                    Button(role: .destructive) {
-                        Task { await viewModel.endCycleEarly() }
-                    } label: {
-                        Label(session.isPomodoroCycle ? "End Cycle Early" : "End Break", systemImage: "stop.fill")
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .disabled(viewModel.isSubmitting)
+
+                    breakControlButton(title: "Skip Break", systemImage: "forward.fill") {
+                        Task { await viewModel.endBreakEarly() }
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .padding()
         .background(Color.theme.secondary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func breakControlButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.kawaiiOutlined)
+        .disabled(viewModel.isSubmitting)
     }
 }
 

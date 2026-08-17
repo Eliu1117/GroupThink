@@ -25,6 +25,8 @@ extension Color {
         static let text = Color.adaptive(light: "6F4E37", dark: "F0E4D4")
         /// Floating card / list surface color.
         static let surface = Color.adaptive(light: "FFFFFF", dark: "3A2F26")
+        /// Deep forest green — break timers and success states.
+        static let forestGreen = Color.adaptive(light: "2F5A40", dark: "6B9B7A")
     }
 
     static func adaptive(light: String, dark: String) -> Color {
@@ -155,11 +157,37 @@ struct KawaiiOutlinedButtonStyle: ButtonStyle {
         configuration.label
             .font(.theme.headline())
             .foregroundStyle(Color.theme.text)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Color.theme.surface, in: Capsule())
+            .overlay(Capsule().stroke(Color.theme.text.opacity(0.35), lineWidth: 1.5))
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
+
+/// Red filled pill for stop/end/cancel actions — rounded capsule with solid color.
+struct KawaiiDestructiveBorderedButtonStyle: ButtonStyle {
+    var isDisabled: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.theme.headline())
+            .foregroundStyle(Color.white.opacity(isDisabled ? 0.65 : 1))
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .background(Color.theme.surface, in: Capsule())
-            .overlay(Capsule().stroke(Color.theme.text.opacity(0.35), lineWidth: 1.5))
+            .background(
+                Color.red.opacity(isDisabled ? 0.35 : 0.88),
+                in: Capsule()
+            )
             .opacity(configuration.isPressed ? 0.75 : 1)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
@@ -173,6 +201,12 @@ extension ButtonStyle where Self == KawaiiPrimaryButtonStyle {
 
 extension ButtonStyle where Self == KawaiiOutlinedButtonStyle {
     static var kawaiiOutlined: KawaiiOutlinedButtonStyle { KawaiiOutlinedButtonStyle() }
+}
+
+extension ButtonStyle where Self == KawaiiDestructiveBorderedButtonStyle {
+    static func kawaiiDestructive(isDisabled: Bool = false) -> KawaiiDestructiveBorderedButtonStyle {
+        KawaiiDestructiveBorderedButtonStyle(isDisabled: isDisabled)
+    }
 }
 
 // MARK: - Toggle

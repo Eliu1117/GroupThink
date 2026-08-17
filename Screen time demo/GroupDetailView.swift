@@ -43,13 +43,16 @@ struct GroupDetailView: View {
     /// GRO-28: duration used for the NEXT session created from this screen.
     /// Seeded from currentGroup.defaultSessionDurationMin and stays in sync with live group changes.
     @State private var sessionDurationMin: Int = 25
-    /// GRO-40: number of consecutive (back-to-back / Pomodoro) sessions for the NEXT cycle.
-    /// 1 = a plain single session; 2+ inserts automatic breaks between sub-sessions.
-    @State private var totalSessionsInCycle: Int = 1
+    /// GRO-40: Pomodoro cycle settings for the NEXT session start.
+    @State private var pomodoroModeEnabled = false
+    @State private var totalSessionsInCycle = PomodoroConfiguration.defaultSessionCount
+    @State private var pomodoroConfiguration = PomodoroConfiguration.defaults
 
     /// Preset durations shown in the session-start picker (minutes).
     // TODO: remove the "1" preset — added only for quick testing of session-end/cycle flows.
     private static let durationPresets = [1, 10, 15, 20, 25, 30, 45, 60, 90]
+    private static let sessionStartWheelHeight: CGFloat = 110
+    private static let sessionStartWheelFontSize: CGFloat = 18
 
     /// Live group doc when available; falls back to the pushed snapshot.
     private var currentGroup: Group {
@@ -202,51 +205,9 @@ struct GroupDetailView: View {
         // Start button (only when no session is live)
         if sessionViewModel.session == nil {
             Section {
-                // GRO-28: Duration preset picker — visible to anyone who can start.
-                if canStartSession {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Label("Session Length", systemImage: "clock.fill")
-                            .font(.theme.body())
-                            .foregroundStyle(Color.theme.text)
-
-                        DurationWheelPicker(totalMinutes: $sessionDurationMin)
-                    }
-
-                    // GRO-40: back-to-back (Pomodoro) session count. 1 = single session.
-                    Stepper(value: $totalSessionsInCycle, in: 1...8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Consecutive Sessions")
-                                .font(.subheadline.weight(.medium))
-                            Text(
-                                totalSessionsInCycle > 1
-                                    ? "\(totalSessionsInCycle) sessions back-to-back, with automatic breaks in between"
-                                    : "Single session — no automatic break cycle"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Button {
-                    Task {
-                        await sessionViewModel.createSession(
-                            durationMin: sessionDurationMin,
-                            totalSessionsInCycle: totalSessionsInCycle
-                        )
-                    }
-                } label: {
-                    Label(
-                        totalSessionsInCycle > 1 ? "Start Pomodoro Cycle" : "Start Study Hall",
-                        systemImage: "play.circle.fill"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0))
-                .disabled(!canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .padding(.horizontal, 16)
+                sessionStartCard
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
             } footer: {
                 if !canStartSession {
                     Text("Only the group creator can start a session.")
@@ -254,8 +215,8 @@ struct GroupDetailView: View {
                     Text("Choose a session length to start.")
                 } else if currentGroup.strictMode {
                     Text("Strict mode is on: all apps will be blocked except each member's whitelist.")
-                } else if totalSessionsInCycle > 1 {
-                    Text("Host \(totalSessionsInCycle) back-to-back \(sessionDurationMin)-minute sessions, with automatic breaks between them (every 4th is a long break).")
+                } else if pomodoroModeEnabled {
+                    Text(pomodoroStartFooter)
                 } else {
                     Text("Host a \(sessionDurationMin.durationPhrase) focused session for this group.")
                 }
@@ -271,6 +232,162 @@ struct GroupDetailView: View {
                 Text(err).font(.footnote).foregroundStyle(.red)
             }
         }
+    }
+
+    // MARK: - Session start card
+
+    private var sessionStartCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if canStartSession {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Session Length", systemImage: "clock.fill")
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text)
+
+                    DurationWheelPicker(
+                        totalMinutes: $sessionDurationMin,
+                        wheelHeight: Self.sessionStartWheelHeight,
+                        valueFontSize: Self.sessionStartWheelFontSize
+                    )
+                }
+
+                pomodoroModeSection
+            }
+
+            Button {
+                Task {
+                    await sessionViewModel.createSession(
+                        durationMin: sessionDurationMin,
+                        totalSessionsInCycle: pomodoroModeEnabled ? totalSessionsInCycle : 1,
+                        pomodoroConfiguration: pomodoroConfiguration
+                    )
+                }
+            } label: {
+                Label(
+                    pomodoroModeEnabled ? "Start Pomodoro Cycle" : "Start Study Hall",
+                    systemImage: "play.circle.fill"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.kawaiiPrimary(isDisabled: !canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0))
+            .disabled(!canStartSession || sessionViewModel.isSubmitting || sessionDurationMin == 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+    }
+
+    // MARK: - Pomodoro mode (GRO-40)
+
+    private var pomodoroModeSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: $pomodoroModeEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pomodoro Mode")
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text)
+                    Text("Run multiple focus sessions with automatic breaks in between.")
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
+                }
+            }
+            .toggleStyle(.kawaii)
+
+            if pomodoroModeEnabled {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Consecutive Sessions")
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
+                        Text("\(totalSessionsInCycle) focus blocks back-to-back — the group stays synced until the cycle finishes.")
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.55))
+                        WheelIntPicker(
+                            value: $totalSessionsInCycle,
+                            range: 2...100,
+                            suffix: "sessions",
+                            wheelHeight: Self.sessionStartWheelHeight,
+                            valueFontSize: Self.sessionStartWheelFontSize
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Break Length")
+                            .font(.theme.body())
+                            .foregroundStyle(Color.theme.text)
+                        Text("\(pomodoroConfiguration.standardBreakMin.durationPhrase) between each session.")
+                            .font(.theme.caption())
+                            .foregroundStyle(Color.theme.text.opacity(0.55))
+                        WheelIntPicker(
+                            value: $pomodoroConfiguration.standardBreakMin,
+                            range: 1...60,
+                            suffix: "min",
+                            wheelHeight: Self.sessionStartWheelHeight,
+                            valueFontSize: Self.sessionStartWheelFontSize
+                        )
+                    }
+
+                    Toggle(isOn: $pomodoroConfiguration.longBreakEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Longer Breaks")
+                                .font(.theme.body())
+                                .foregroundStyle(Color.theme.text)
+                            Text("Give extra recovery time on selected breaks.")
+                                .font(.theme.caption())
+                                .foregroundStyle(Color.theme.text.opacity(0.55))
+                        }
+                    }
+                    .toggleStyle(.kawaii)
+
+                    if pomodoroConfiguration.longBreakEnabled {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Long Break Every")
+                                .font(.theme.body())
+                                .foregroundStyle(Color.theme.text)
+                            Text("Every \(pomodoroConfiguration.longBreakEveryN) sessions, the break is longer.")
+                                .font(.theme.caption())
+                                .foregroundStyle(Color.theme.text.opacity(0.55))
+                            WheelIntPicker(
+                                value: $pomodoroConfiguration.longBreakEveryN,
+                                range: 2...10,
+                                suffix: "sessions",
+                                wheelHeight: Self.sessionStartWheelHeight,
+                                valueFontSize: Self.sessionStartWheelFontSize
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Long Break Length")
+                                .font(.theme.body())
+                                .foregroundStyle(Color.theme.text)
+                            Text("\(pomodoroConfiguration.longBreakMin.durationPhrase) on long breaks.")
+                                .font(.theme.caption())
+                                .foregroundStyle(Color.theme.text.opacity(0.55))
+                            WheelIntPicker(
+                                value: $pomodoroConfiguration.longBreakMin,
+                                range: 1...90,
+                                suffix: "min",
+                                wheelHeight: Self.sessionStartWheelHeight,
+                                valueFontSize: Self.sessionStartWheelFontSize
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var pomodoroStartFooter: String {
+        var parts = [
+            "Host \(totalSessionsInCycle) back-to-back \(sessionDurationMin.durationPhrase) sessions with \(pomodoroConfiguration.standardBreakMin.durationPhrase) breaks."
+        ]
+        if pomodoroConfiguration.longBreakEnabled {
+            parts.append(
+                "Every \(pomodoroConfiguration.longBreakEveryN) sessions, the break is \(pomodoroConfiguration.longBreakMin.durationPhrase)."
+            )
+        }
+        return parts.joined(separator: " ")
     }
 
     // MARK: - Tab: Schedules (GRO-12 / GRO-13)

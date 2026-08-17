@@ -88,7 +88,8 @@ final class SessionService {
         breakVotingEnabled: Bool = false,
         breakWindowSeconds: Int = 120,
         breakCooldownMinutes: Int = 0,
-        totalSessionsInCycle: Int = 1 // GRO-40: back-to-back (Pomodoro) session count
+        totalSessionsInCycle: Int = 1, // GRO-40: back-to-back (Pomodoro) session count
+        pomodoroConfiguration: PomodoroConfiguration = .defaults
     ) async throws -> String {
         let ref = activeSessionRef(for: groupID)
 
@@ -120,7 +121,7 @@ final class SessionService {
             "cycleId": cycleID,
             "totalSessionsInCycle": max(1, totalSessionsInCycle),
             "currentSessionIndex": 1,
-        ]
+        ].merging(pomodoroConfiguration.firestoreFields) { _, new in new }
 
         try await ref.setData(data)
         print("[Firestore Session] Started session \(sessionID) in group \(groupID) (strict: \(strictMode), breakVoting: \(breakVotingEnabled), cycle: 1/\(max(1, totalSessionsInCycle)))")
@@ -166,7 +167,7 @@ final class SessionService {
             "cycleId": session.cycleId,
             "totalSessionsInCycle": session.totalSessionsInCycle,
             "currentSessionIndex": nextIndex,
-        ]
+        ].merging(session.pomodoroConfiguration.firestoreFields) { _, new in new }
 
         try await ref.setData(data)
         print("[Firestore Session] Cycle \(session.cycleId) advanced to sub-session \(nextIndex)/\(session.totalSessionsInCycle) in group \(groupID)")
