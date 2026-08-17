@@ -10,6 +10,7 @@ struct CreateGroupView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var groupName = ""
+    @State private var sessionDurationMin = 30
 
     var body: some View {
         NavigationStack {
@@ -20,6 +21,14 @@ struct CreateGroupView: View {
                         .autocorrectionDisabled()
                 } footer: {
                     Text("Give your study hall a name your friends will recognize.")
+                }
+
+                Section {
+                    DurationWheelPicker(totalMinutes: $sessionDurationMin)
+                } header: {
+                    Label("Session Length", systemImage: "clock.fill")
+                } footer: {
+                    Text("Default length for this group’s study halls. You can change it before each session.")
                 }
 
                 if let errorMessage = viewModel.errorMessage {
@@ -44,7 +53,7 @@ struct CreateGroupView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         Task {
-                            if await viewModel.createGroup(name: groupName) {
+                            if await viewModel.createGroup(name: groupName, durationMin: sessionDurationMin) {
                                 dismiss()
                             }
                         }
@@ -53,6 +62,7 @@ struct CreateGroupView: View {
                     .disabled(
                         groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || viewModel.isSubmitting
+                        || sessionDurationMin == 0
                     )
                 }
             }

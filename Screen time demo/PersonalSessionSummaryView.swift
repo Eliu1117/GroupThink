@@ -27,11 +27,13 @@ struct PersonalSessionSummaryView: View {
                 }
                 .padding()
             }
+            .kawaiiBackground()
             .navigationTitle("Session Summary")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .tint(Color.theme.primary)
                 }
             }
             .onAppear { runEntranceAnimation() }
@@ -54,18 +56,24 @@ struct PersonalSessionSummaryView: View {
 
     private var heroSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: heroSymbol)
-                .font(.system(size: 64))
-                .foregroundStyle(heroColor)
-                .scaleEffect(heroVisible ? 1 : 0.2)
-                .opacity(heroVisible ? 1 : 0)
+            ZStack {
+                Circle()
+                    .fill(heroColor.opacity(0.25))
+                    .frame(width: 108, height: 108)
+                Image(systemName: heroSymbol)
+                    .font(.system(size: 48))
+                    .foregroundStyle(heroColor)
+            }
+            .scaleEffect(heroVisible ? 1 : 0.2)
+            .opacity(heroVisible ? 1 : 0)
 
             Text(heroTitle)
-                .font(.title2.bold())
+                .font(.theme.heading(22))
+                .foregroundStyle(Color.theme.text)
 
-            Text("\(summary.actualMinutes) min focus session\(summary.wasStrictMode ? " · Strict" : "")")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text("\(summary.actualMinutes.durationPhrase) focus session\(summary.wasStrictMode ? " · Strict" : "")")
+                .font(.theme.body())
+                .foregroundStyle(Color.theme.text.opacity(0.6))
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -79,8 +87,8 @@ struct PersonalSessionSummaryView: View {
 
     private var heroColor: Color {
         if summary.openedBlockedAppCount > 0 { return .red }
-        if summary.endedEarly { return .yellow }
-        return .green
+        if summary.endedEarly { return Color(hex: "E8B94A") }
+        return Color(hex: "6FA287")
     }
 
     private var heroTitle: String {
@@ -92,52 +100,28 @@ struct PersonalSessionSummaryView: View {
     // MARK: - Session stats
 
     private var sessionStatsCard: some View {
-        HStack {
-            statBlock(
+        HStack(spacing: 12) {
+            KawaiiStatBlock(
+                icon: "clock.fill",
+                iconTint: Color.theme.secondary,
                 value: "\(summary.actualMinutes)",
-                label: "Minutes Focused",
-                symbol: "clock.fill",
-                color: .blue
+                label: "Minutes Focused"
             )
-
-            Divider().frame(height: 44)
-
-            statBlock(
+            KawaiiStatBlock(
+                icon: "target",
+                iconTint: Color.theme.primary,
                 value: "\(summary.plannedDurationMin)",
-                label: "Planned",
-                symbol: "target",
-                color: .secondary
+                label: "Planned"
             )
-
-            Divider().frame(height: 44)
-
-            statBlock(
+            KawaiiStatBlock(
+                icon: "lock.shield.fill",
+                iconTint: summary.wasStrictMode ? Color.theme.secondary : Color.theme.text.opacity(0.2),
                 value: summary.wasStrictMode ? "On" : "Off",
-                label: "Strict Mode",
-                symbol: "lock.shield.fill",
-                color: summary.wasStrictMode ? .purple : .secondary
+                label: "Strict Mode"
             )
         }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
         .opacity(statsVisible ? 1 : 0)
         .offset(y: statsVisible ? 0 : 16)
-    }
-
-    private func statBlock(value: String, label: String, symbol: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: symbol)
-                .font(.subheadline)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.title3.bold().monospacedDigit())
-                .contentTransition(.numericText())
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Access attempts
@@ -145,27 +129,28 @@ struct PersonalSessionSummaryView: View {
     private var accessAttemptsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Access Attempts")
-                .font(.headline)
+                .font(.theme.headline())
+                .foregroundStyle(Color.theme.text)
 
             HStack(spacing: 12) {
                 Image(systemName: summary.openedBlockedAppCount > 0 ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
                     .font(.title2)
-                    .foregroundStyle(summary.openedBlockedAppCount > 0 ? .red : .green)
+                    .foregroundStyle(summary.openedBlockedAppCount > 0 ? .red : Color(hex: "6FA287"))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(attemptsTitle)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.theme.body())
+                        .foregroundStyle(Color.theme.text)
                     Text(attemptsSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
                 }
 
                 Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
+        .kawaiiCard()
         .opacity(attemptsVisible ? 1 : 0)
         .offset(y: attemptsVisible ? 0 : 16)
     }
@@ -191,8 +176,8 @@ struct PersonalSessionSummaryView: View {
             startAt: Date().addingTimeInterval(-25 * 60),
             endedAt: Date(),
             wasStrictMode: true,
-            endedEarly: false,
-            openedBlockedAppCount: 2
+            endedEarly: true,
+            openedBlockedAppCount: 0
         )
     )
 }
