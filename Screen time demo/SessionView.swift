@@ -155,9 +155,8 @@ struct SessionView: View {
 
     private func breakVoteDisabledReason(_ session: StudySession) -> String? {
         guard session.breakVotingEnabled else { return nil }
-        if session.penaltyLock {
-            return "An early-end vote already passed last session — voting is locked."
-        }
+        // GRO-45: voting is now scoped per sub-session block; breaks between sessions simply
+        // hide these controls entirely (see `activeContent`), so no "penalty locked" case here.
         if !session.breakTimeLockCleared {
             let needed = session.durationMin / 2
             return "Break votes unlock after \(needed) min of focus."

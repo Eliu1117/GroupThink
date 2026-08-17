@@ -52,6 +52,12 @@ final class SessionViewModel: ObservableObject {
     private var breakCountdownTask: Task<Void, Never>?
     private static let breakDurationSec = 600   // 10-minute break
 
+    // GRO-15: host-only debounce task that auto-ends a session once every participant has
+    // shown as `.left` for a short grace period (protects against a brief background/
+    // foreground blip — e.g. a notification swipe — from prematurely killing the session).
+    private var emptySessionAutoEndTask: Task<Void, Never>?
+    private static let emptySessionGraceNanoseconds: UInt64 = 20_000_000_000 // 20s
+
     // GRO-40: accumulates focus minutes earned across EARLIER sub-sessions of a back-to-back
     // cycle. The final sub-session's minutes are added on top via `computeEarnedMinutes` when
     // the summary is built, since that one still goes through the normal end-of-session path.
@@ -66,13 +72,12 @@ final class SessionViewModel: ObservableObject {
     private var breakVotingEnabled: Bool = false
     private var breakWindowSeconds: Int = 120
     private var breakCooldownPercent: Int = 20
-    // GRO-11: every-other-session penalty flag read from the Group document.
-    private var breakPassedLastSession: Bool = false
 
     deinit {
         sessionListener?.remove()
         countdownTask?.cancel()
         breakVoteExpiryTask?.cancel()
+        emptySessionAutoEndTask?.cancel()
     }
 
     // MARK: - Configuration
@@ -96,6 +101,8 @@ final class SessionViewModel: ObservableObject {
         breakVoteExpiryTask = nil
         breakCountdownTask?.cancel()
         breakCountdownTask = nil
+        emptySessionAutoEndTask?.cancel()
+        emptySessionAutoEndTask = nil
         observedBreakVoteID = nil
         resolvedBreakVoteID = nil
         isOnBreak = false
@@ -134,8 +141,6 @@ final class SessionViewModel: ObservableObject {
         breakVotingEnabled = group.breakVotingEnabled
         breakWindowSeconds = group.breakWindowSeconds
         breakCooldownPercent = group.breakCooldownPercent
-        // GRO-11: read flag — only acted upon in createSession, never mid-session.
-        breakPassedLastSession = group.breakPassedLastSession
     }
 
     /// GRO-21: Seeds display names from the pre-fetched member roster.
@@ -182,8 +187,6 @@ final class SessionViewModel: ObservableObject {
         do {
             // Cooldown in minutes: breakCooldownPercent % of session duration, min 1 min.
             let cooldownMinutes = max(1, Int(ceil(Double(durationMin) * Double(breakCooldownPercent) / 100.0)))
-            // GRO-11: if the previous session ended via a passed break vote, start this one locked.
-            let initialPenaltyLock = breakPassedLastSession
             _ = try await SessionService.shared.createSession(
                 groupID: groupID,
                 hostUID: currentUID,
@@ -192,16 +195,11 @@ final class SessionViewModel: ObservableObject {
                 breakVotingEnabled: breakVotingEnabled,
                 breakWindowSeconds: breakWindowSeconds,
                 breakCooldownMinutes: cooldownMinutes,
-                penaltyLock: initialPenaltyLock,
                 totalSessionsInCycle: totalSessionsInCycle
             )
             let capturedGroupID = groupID
             // GRO-33: persist last-used duration so all members' pickers stay in sync.
             Task { try? await GroupService.shared.updateLastSessionDuration(groupID: capturedGroupID, durationMin: durationMin) }
-            // GRO-11: consume the cross-session penalty flag now that the new session has it.
-            if initialPenaltyLock {
-                Task { try? await GroupService.shared.clearBreakPenalty(groupID: capturedGroupID) }
-            }
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -408,6 +406,35 @@ final class SessionViewModel: ObservableObject {
         return await endSession(cycleEndedEarly: session.hasMoreSessionsInCycle)
     }
 
+    // MARK: - Empty-session auto-end (GRO-15)
+
+    /// Host-only: schedules (or cancels) a debounced auto-end once every participant shows
+    /// `.left`. Only the host's device performs the actual Firestore write — other devices
+    /// still observe `session.allParticipantsLeft` but take no action, since ending a session
+    /// is a host-only operation.
+    private func evaluateEmptySessionAutoEnd(_ session: StudySession) {
+        guard isHost else { return }
+
+        guard session.allParticipantsLeft else {
+            emptySessionAutoEndTask?.cancel()
+            emptySessionAutoEndTask = nil
+            return
+        }
+
+        guard emptySessionAutoEndTask == nil else { return } // already counting down
+
+        let sessionID = session.id
+        emptySessionAutoEndTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.emptySessionGraceNanoseconds)
+            guard !Task.isCancelled, let self else { return }
+            // Re-check against the LATEST session snapshot — someone may have come back,
+            // or the session may have already ended some other way, during the grace period.
+            guard let current = self.session, current.id == sessionID, current.allParticipantsLeft else { return }
+            print("[Session] All participants left early — auto-ending session \(sessionID)")
+            _ = await self.endCycleEarly()
+        }
+    }
+
     // MARK: - Computed
 
     /// Expose the authenticated UID so views can display per-user state (e.g. break vote).
@@ -494,6 +521,8 @@ final class SessionViewModel: ObservableObject {
                 handleBreakVoteUpdate(session)
                 // GRO-35: sync break countdown from Firestore timestamps (navigation-safe).
                 syncBreakState(from: session)
+                // GRO-15: auto-end once every participant has left early.
+                evaluateEmptySessionAutoEnd(session)
 
             case .ended:
                 handleSessionEnd(for: session)
@@ -713,11 +742,8 @@ final class SessionViewModel: ObservableObject {
                     } else if isHost {
                         Task { _ = await self.endSession() }
                     }
-
-                    // GRO-11: flag the group so the NEXT session starts penalty-locked.
-                    if let gid = groupID {
-                        Task { try? await GroupService.shared.markBreakPassed(groupID: gid) }
-                    }
+                    // GRO-45: voting eligibility is now scoped per sub-session block, not
+                    // propagated across cycles — no cross-cycle penalty flag to set here.
                 }
             }
 
@@ -1076,6 +1102,8 @@ final class SessionViewModel: ObservableObject {
         stopBreakCountdown()
         secondsRemaining = 0
         scheduledEndDate = nil
+        emptySessionAutoEndTask?.cancel()
+        emptySessionAutoEndTask = nil
         SessionContextStore.shared.clearAll()
         SessionActivityScheduler.stopMonitoring()
 
