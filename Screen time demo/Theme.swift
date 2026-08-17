@@ -9,21 +9,30 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Palette
 
 extension Color {
     enum theme {
         /// Strawberry milk pink — primary actions, active states, highlights.
-        static let primary = Color(hex: "FADADD")
+        static let primary = Color.adaptive(light: "FADADD", dark: "9E6B78")
         /// Matcha green — secondary actions, success/focused states.
-        static let secondary = Color(hex: "D0E8D0")
-        /// Vanilla cream — global screen background.
-        static let background = Color(hex: "FDF5E6")
-        /// Coffee brown — all text and icon foreground color.
-        static let text = Color(hex: "6F4E37")
+        static let secondary = Color.adaptive(light: "D0E8D0", dark: "5A7A5A")
+        /// Vanilla cream (light) / espresso (dark) — global screen background.
+        static let background = Color.adaptive(light: "FDF5E6", dark: "2A2118")
+        /// Coffee brown (light) / warm cream (dark) — text and icon foreground.
+        static let text = Color.adaptive(light: "6F4E37", dark: "F0E4D4")
         /// Floating card / list surface color.
-        static let surface = Color.white
+        static let surface = Color.adaptive(light: "FFFFFF", dark: "3A2F26")
+    }
+
+    static func adaptive(light: String, dark: String) -> Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(hex: dark)
+                : UIColor(hex: light)
+        })
     }
 }
 
@@ -40,6 +49,22 @@ extension Color {
         let b = Double(rgb & 0x0000FF) / 255
 
         self.init(red: r, green: g, blue: b)
+    }
+}
+
+extension UIColor {
+    convenience init(hex: String) {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+
+        var rgb: UInt64 = 0
+        Scanner(string: hexSanitized).scanHexInt64(&rgb)
+
+        let r = CGFloat((rgb & 0xFF0000) >> 16) / 255
+        let g = CGFloat((rgb & 0x00FF00) >> 8) / 255
+        let b = CGFloat(rgb & 0x0000FF) / 255
+
+        self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }
 

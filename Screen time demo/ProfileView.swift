@@ -8,6 +8,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @StateObject private var profileViewModel = ProfileViewModel()
 
     var body: some View {
@@ -28,6 +29,8 @@ struct ProfileView: View {
                 if let profile = profileViewModel.profile {
                     statsSection(profile)
                 }
+
+                appearanceSection
 
                 if let errorMessage = profileViewModel.errorMessage {
                     Section {
@@ -109,6 +112,30 @@ struct ProfileView: View {
         }
     }
 
+    private var appearanceSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Appearance", systemImage: "paintbrush.fill")
+                    .font(.theme.body())
+                    .foregroundStyle(Color.theme.text)
+
+                Picker("Appearance", selection: $appearanceSettings.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("Settings")
+                .foregroundStyle(Color.theme.text.opacity(0.6))
+        } footer: {
+            Text("Auto follows your iPhone’s light or dark mode setting.")
+                .foregroundStyle(Color.theme.text.opacity(0.55))
+        }
+    }
+
     // MARK: - Avatar
 
     @ViewBuilder
@@ -163,4 +190,5 @@ struct ProfileView: View {
 #Preview {
     ProfileView()
         .environmentObject(AuthViewModel())
+        .environmentObject(AppearanceSettings.shared)
 }
