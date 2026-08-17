@@ -56,7 +56,15 @@ struct BreakVoteView: View {
                 case .pending:
                     votingButtons(vote: vote)
                 case .passed:
-                    resultBanner(text: "Break approved! 🎉 Shields are down.", color: .green)
+                    // GRO-39: a passed vote ends the current sub-session (no break timer for
+                    // it) — but in a back-to-back cycle that just moves things along to the
+                    // regular inter-session break rather than ending everything.
+                    resultBanner(
+                        text: viewModel.session?.hasMoreSessionsInCycle == true
+                            ? "Vote passed! 🎉 Wrapping up this session early."
+                            : "Vote passed! 🎉 Ending the session now.",
+                        color: .green
+                    )
                 case .failed, .expired:
                     resultBanner(text: "Vote didn't pass. Stay focused!", color: .orange)
                 }
@@ -92,19 +100,22 @@ struct BreakVoteView: View {
     // would be ambiguous in this context).
     @ViewBuilder
     private var headerSection: some View {
+        // GRO-39: a passed vote ends the session — the sheet now frames this as an
+        // early-end vote rather than a break request.
         if let vote, let name = viewModel.participantNames[vote.initiatorUid] {
-            Text("\(name) wants a break")
+            Text("\(name) wants to end the session early")
                 .font(.theme.heading(20))
                 .foregroundStyle(Color.theme.text)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
         } else {
-            Text("A member wants a break")
+            Text("A member wants to end the session early")
                 .font(.theme.heading(20))
                 .foregroundStyle(Color.theme.text)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
-        }
+}
+
     }
 
     // MARK: - Countdown circle
@@ -147,9 +158,10 @@ struct BreakVoteView: View {
     private var tallySection: some View {
         VStack(spacing: 8) {
             HStack {
-                Label("\(yesCount) for a break", systemImage: "hand.thumbsup.fill")
+                Label("\(yesCount) to end early", systemImage: "hand.thumbsup.fill")
                     .font(.theme.body())
                     .foregroundStyle(Color(hex: "6FA287"))
+
                 Spacer()
                 Text("Need \(neededForPass) to pass")
                     .font(.theme.caption())
@@ -174,7 +186,7 @@ struct BreakVoteView: View {
     private func votingButtons(vote: BreakVote) -> some View {
         if let myVote {
             Label(
-                myVote ? "You voted: For a break" : "You voted: Against",
+                myVote ? "You voted: End early" : "You voted: Against",
                 systemImage: myVote ? "hand.thumbsup.fill" : "hand.thumbsdown.fill"
             )
             .font(.subheadline.weight(.medium))
@@ -198,7 +210,7 @@ struct BreakVoteView: View {
                 Button {
                     Task { await viewModel.castBreakVote(inFavor: true) }
                 } label: {
-                    Label("For Break", systemImage: "hand.thumbsup.fill")
+                    Label("End Early", systemImage: "hand.thumbsup.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

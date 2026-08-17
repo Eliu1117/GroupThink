@@ -68,9 +68,6 @@ struct StudySession: Identifiable, Equatable {
     /// Timestamp when the most recent vote concluded (passed, failed, or expired).
     /// Used to enforce the per-session cooldown.
     let lastBreakVoteEndedAt: Date?
-    /// Set to true when a break vote has already passed in this session.
-    /// Prevents early-end votes from passing again in the same session.
-    let penaltyLock: Bool
     /// The currently active break vote, or nil when no vote is in flight.
     let activeBreakVote: BreakVote?
 
@@ -85,11 +82,33 @@ struct StudySession: Identifiable, Equatable {
     /// Seconds remaining at the moment the break was paused. Used to seed the countdown on resume.
     let breakPausedSecondsRemaining: Int
 
+    // MARK: - Back-to-back / Pomodoro cycle (GRO-40)
+    /// Shared across every sub-session belonging to the same back-to-back cycle.
+    let cycleId: String
+    /// Total number of consecutive sessions the host configured for this cycle (>= 1).
+    let totalSessionsInCycle: Int
+    /// 1-based index of the current sub-session within the cycle.
+    let currentSessionIndex: Int
+    /// True when the host cut the cycle short (via `endCycleEarly`) before all planned
+    /// sessions/breaks ran their course.
+    let cycleEndedEarly: Bool
+
     /// Initialises from the well-known `sessions/current` document.
     /// `id` is taken from the stored `sessionId` UUID field so stats idempotency
     /// works across session resets without relying on the document's Firestore ID.
+    ///
+    /// Uses `.estimate` for server-timestamp fields (`startAt`, `breakStartedAt`, etc.) rather
+    /// than the SDK default (`.none`). With `.none`, a listener's very first, locally-pending
+    /// snapshot for any write that sets a `FieldValue.serverTimestamp()` field returns `nil`
+    /// for that field until the server confirms it. For `breakStartedAt` in particular, that
+    /// briefly made `breakIsActive` read as `false` right after starting a break, which made
+    /// `SessionViewModel` think it had reverted to a plain active sub-session — re-applying
+    /// shields with a now-stale (already-past) `endDate` — before the confirmed snapshot
+    /// flipped it back a moment later. With very short (e.g. 1-minute testing) sessions that
+    /// flicker was enough to spin the countdown/break logic into a rapid infinite loop.
+    /// `.estimate` returns the local write time immediately, so these fields never appear nil.
     init?(document: DocumentSnapshot) {
-        guard document.exists, let data = document.data() else { return nil }
+        guard document.exists, let data = document.data(with: .estimate) else { return nil }
 
         guard
             let statusRaw = data["status"] as? String,
@@ -111,7 +130,6 @@ struct StudySession: Identifiable, Equatable {
         self.breakVotingEnabled = data["breakVotingEnabled"] as? Bool ?? false
         self.breakWindowSeconds = data["breakWindowSeconds"] as? Int ?? 120
         self.breakCooldownMinutes = data["breakCooldownMinutes"] as? Int ?? 0
-        self.penaltyLock = data["penaltyLock"] as? Bool ?? false
         self.lastBreakVoteEndedAt = (data["lastBreakVoteEndedAt"] as? Timestamp)?.dateValue()
         if let voteMap = data["activeBreakVote"] as? [String: Any] {
             activeBreakVote = BreakVote(map: voteMap)
@@ -124,6 +142,12 @@ struct StudySession: Identifiable, Equatable {
         self.breakDurationSec = data["breakDurationSec"] as? Int ?? 600
         self.breakPausedAt = (data["breakPausedAt"] as? Timestamp)?.dateValue()
         self.breakPausedSecondsRemaining = data["breakPausedSecondsRemaining"] as? Int ?? 0
+
+        // Back-to-back / Pomodoro cycle (GRO-40)
+        self.cycleId = (data["cycleId"] as? String) ?? self.id
+        self.totalSessionsInCycle = max(1, data["totalSessionsInCycle"] as? Int ?? 1)
+        self.currentSessionIndex = max(1, data["currentSessionIndex"] as? Int ?? 1)
+        self.cycleEndedEarly = data["cycleEndedEarly"] as? Bool ?? false
 
         if let timestamp = data["startAt"] as? Timestamp {
             startAt = timestamp.dateValue()
@@ -153,6 +177,15 @@ struct StudySession: Identifiable, Equatable {
     var endDate: Date? {
         guard let startAt else { return nil }
         return startAt.addingTimeInterval(TimeInterval(durationMin * 60))
+    }
+
+    // MARK: - Empty-session auto-end (GRO-15)
+
+    /// True once at least one participant has joined AND every one of them is currently
+    /// `.left` (backgrounded/departed) — i.e. nobody is actively focused, on a break, or
+    /// mid-shield on this sub-session. Used to auto-terminate a session nobody is left in.
+    var allParticipantsLeft: Bool {
+        status == .active && !participants.isEmpty && participants.values.allSatisfy { $0 == .left }
     }
 
     // MARK: - Break state helpers (GRO-35)
@@ -196,13 +229,30 @@ struct StudySession: Identifiable, Equatable {
         return Date() >= cooldownEnd
     }
 
-    /// True when all four pre-conditions for initiating a break vote are met.
+    /// True when every pre-condition for initiating a break vote is met.
+    ///
+    /// GRO-45: voting eligibility is now scoped to each sub-session "block" within a
+    /// back-to-back cycle rather than gated at the whole-cycle level (the old GRO-11
+    /// `penaltyLock` cross-cycle rule allowed voting only in every OTHER cycle — removed).
+    /// `!breakIsActive` is the one thing that disables voting "between sessions": the
+    /// inter-session break itself.
     var canInitiateBreakVote: Bool {
         breakVotingEnabled
             && status == .active
+            && !breakIsActive
             && breakTimeLockCleared
             && breakCooldownCleared
             && (activeBreakVote == nil || !activeBreakVote!.isPending)
-            && !penaltyLock
     }
+
+    // MARK: - Back-to-back / Pomodoro cycle helpers (GRO-40)
+
+    /// True when this cycle spans more than one sub-session.
+    var isPomodoroCycle: Bool { totalSessionsInCycle > 1 }
+
+    /// True while more sub-sessions remain in the cycle after this one.
+    var hasMoreSessionsInCycle: Bool { currentSessionIndex < totalSessionsInCycle }
+
+    /// Short "Session X of Y" label for UI display during a multi-session cycle.
+    var cycleProgressLabel: String { "Session \(currentSessionIndex) of \(totalSessionsInCycle)" }
 }
