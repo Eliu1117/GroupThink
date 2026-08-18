@@ -64,6 +64,27 @@ final class UserService {
         }
     }
 
+    // MARK: - Profile setup (username + avatar)
+
+    /// Explicit user-driven write from the Profile Setup / Edit Profile screen. Unlike
+    /// `syncDisplayName`, this always overwrites the stored values — the user directly
+    /// chose them, so there's no "placeholder" ambiguity to protect against. Uses `merge`
+    /// so it never clobbers `displayName`/`stats`/`fcmTokens` written by other flows.
+    func updateProfile(uid: String, username: String, avatarAssetName: String) async throws {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalUsername = trimmed.isEmpty ? "Studier" : trimmed
+
+        try await db.collection("users").document(uid).setData(
+            [
+                "username": finalUsername,
+                "avatarAssetName": avatarAssetName,
+                "profileSetupCompleted": true,
+            ],
+            merge: true
+        )
+        print("[UserService] Updated profile for \(uid) → username: \(finalUsername), avatar: \(avatarAssetName)")
+    }
+
     /// Fetches display names via direct document reads (`users/{uid}`).
     func fetchDisplayNames(for uids: [String]) async -> [String: String] {
         guard !uids.isEmpty else { return [:] }

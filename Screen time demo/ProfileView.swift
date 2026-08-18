@@ -10,6 +10,7 @@ struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @EnvironmentObject private var appearanceSettings: AppearanceSettings
     @StateObject private var profileViewModel = ProfileViewModel()
+    @State private var showEditProfile = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +30,8 @@ struct ProfileView: View {
                 if let profile = profileViewModel.profile {
                     statsSection(profile)
                 }
+
+                editProfileSection
 
                 appearanceSection
 
@@ -58,6 +61,9 @@ struct ProfileView: View {
             }
             .onChange(of: authViewModel.user?.uid) { _, userID in
                 profileViewModel.startListening(userID: userID)
+            }
+            .sheet(isPresented: $showEditProfile) {
+                ProfileSetupView(isOnboarding: false)
             }
         }
     }
@@ -112,6 +118,19 @@ struct ProfileView: View {
         }
     }
 
+    private var editProfileSection: some View {
+        Section {
+            KawaiiListRow(
+                icon: "pencil",
+                iconTint: Color.theme.secondary,
+                title: "Edit Profile",
+                subtitle: "Update your username and avatar"
+            ) {
+                showEditProfile = true
+            }
+        }
+    }
+
     private var appearanceSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 10) {
@@ -156,6 +175,17 @@ struct ProfileView: View {
             .frame(width: 88, height: 88)
             .clipShape(Circle())
             .overlay(Circle().stroke(Color.theme.surface, lineWidth: 4))
+        } else if let assetName = profileViewModel.profile?.avatarAssetName,
+                  let avatarOption = AvatarOption(rawValue: assetName) {
+            Image(avatarOption.assetName)
+                .resizable()
+                .scaledToFit()
+                .padding(16)
+                .frame(width: 88, height: 88)
+                .background(Color.theme.secondary.opacity(0.18))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.theme.surface, lineWidth: 4))
+                .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 3)
         } else {
             avatarPlaceholder
         }
@@ -173,8 +203,13 @@ struct ProfileView: View {
             }
     }
 
+    /// Prefers the user-chosen `username` once Profile Setup is complete; otherwise falls
+    /// back to the original Apple/Firebase-derived `displayName` used before this feature.
     private var displayName: String {
-        profileViewModel.profile?.displayName
+        if let profile = profileViewModel.profile, profile.profileSetupCompleted {
+            return profile.username
+        }
+        return profileViewModel.profile?.displayName
             ?? authViewModel.user?.displayName
             ?? "User"
     }
