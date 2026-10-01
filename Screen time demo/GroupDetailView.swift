@@ -26,6 +26,9 @@ struct GroupDetailView: View {
     var autoStartSession: Bool = false
 
     @EnvironmentObject private var authViewModel: AuthViewModel
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -71,11 +74,17 @@ struct GroupDetailView: View {
 
     // MARK: - Body
 
+    /// Schedules is sunset for now — hidden from the tab picker without deleting its content,
+    /// config sheets, or underlying state, so it can be re-enabled by removing this filter.
+    private var visibleTabs: [GroupTab] {
+        GroupTab.allCases.filter { $0 != .schedules }
+    }
+
     var body: some View {
         List {
             // ── Segmented tab picker ─────────────────────────────────────
             Picker("", selection: $selectedTab) {
-                ForEach(GroupTab.allCases, id: \.self) { tab in
+                ForEach(visibleTabs, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
             }
@@ -162,6 +171,7 @@ struct GroupDetailView: View {
             }
             await viewModel.loadMembers(for: group, knownNames: knownNames)
             sessionViewModel.seedParticipantNames(viewModel.memberNames)
+            sessionViewModel.seedParticipantAvatars(viewModel.memberAvatars)
 
             // GRO-28/GRO-33: seed duration picker from last session's duration.
             sessionDurationMin = currentGroup.lastSessionDurationMin
@@ -188,6 +198,9 @@ struct GroupDetailView: View {
         .onChange(of: scenePhase) { _, newPhase in
             sessionViewModel.handleScenePhase(newPhase)
         }
+        // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+        // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 
     // MARK: - Tab: Study Halls
@@ -198,7 +211,8 @@ struct GroupDetailView: View {
         if sessionViewModel.session != nil {
             SessionView(
                 viewModel: sessionViewModel,
-                memberNames: sessionViewModel.participantNames
+                memberNames: sessionViewModel.participantNames,
+                memberAvatars: sessionViewModel.participantAvatars
             )
         }
 
@@ -281,7 +295,7 @@ struct GroupDetailView: View {
     // MARK: - Pomodoro mode (GRO-40)
 
     private var pomodoroModeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             Toggle(isOn: $pomodoroModeEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pomodoro Mode")
@@ -295,87 +309,81 @@ struct GroupDetailView: View {
             .toggleStyle(.kawaii)
 
             if pomodoroModeEnabled {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Consecutive Sessions")
-                            .font(.theme.body())
-                            .foregroundStyle(Color.theme.text)
-                        Text("\(totalSessionsInCycle) focus blocks back-to-back — the group stays synced until the cycle finishes.")
-                            .font(.theme.caption())
-                            .foregroundStyle(Color.theme.text.opacity(0.55))
-                        WheelIntPicker(
-                            value: $totalSessionsInCycle,
-                            range: 2...100,
-                            suffix: "sessions",
-                            wheelHeight: Self.sessionStartWheelHeight,
-                            valueFontSize: Self.sessionStartWheelFontSize
-                        )
+                VStack(alignment: .leading, spacing: 12) {
+                    settingCard(
+                        title: "Consecutive Sessions",
+                        subtitle: "\(totalSessionsInCycle) focus blocks back-to-back — the group stays synced until the cycle finishes."
+                    ) {
+                        KawaiiStepperField(value: $totalSessionsInCycle, range: 2...100, suffix: "sessions")
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Break Length")
-                            .font(.theme.body())
-                            .foregroundStyle(Color.theme.text)
-                        Text("\(pomodoroConfiguration.standardBreakMin.durationPhrase) between each session.")
-                            .font(.theme.caption())
-                            .foregroundStyle(Color.theme.text.opacity(0.55))
-                        WheelIntPicker(
-                            value: $pomodoroConfiguration.standardBreakMin,
-                            range: 1...60,
-                            suffix: "min",
-                            wheelHeight: Self.sessionStartWheelHeight,
-                            valueFontSize: Self.sessionStartWheelFontSize
-                        )
+                    settingCard(
+                        title: "Break Length",
+                        subtitle: "\(pomodoroConfiguration.standardBreakMin.durationPhrase) between each session."
+                    ) {
+                        KawaiiStepperField(value: $pomodoroConfiguration.standardBreakMin, range: 1...60, suffix: "min")
                     }
 
-                    Toggle(isOn: $pomodoroConfiguration.longBreakEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Longer Breaks")
-                                .font(.theme.body())
-                                .foregroundStyle(Color.theme.text)
-                            Text("Give extra recovery time on selected breaks.")
-                                .font(.theme.caption())
-                                .foregroundStyle(Color.theme.text.opacity(0.55))
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: $pomodoroConfiguration.longBreakEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Longer Breaks")
+                                    .font(.theme.body())
+                                    .foregroundStyle(Color.theme.text)
+                                Text("Give extra recovery time on selected breaks.")
+                                    .font(.theme.caption())
+                                    .foregroundStyle(Color.theme.text.opacity(0.55))
+                            }
+                        }
+                        .toggleStyle(.kawaii)
+
+                        if pomodoroConfiguration.longBreakEnabled {
+                            VStack(alignment: .leading, spacing: 12) {
+                                settingCard(
+                                    title: "Long Break Every",
+                                    subtitle: "Every \(pomodoroConfiguration.longBreakEveryN) sessions, the break is longer."
+                                ) {
+                                    KawaiiStepperField(value: $pomodoroConfiguration.longBreakEveryN, range: 2...10, suffix: "sessions")
+                                }
+
+                                settingCard(
+                                    title: "Long Break Length",
+                                    subtitle: "\(pomodoroConfiguration.longBreakMin.durationPhrase) on long breaks."
+                                ) {
+                                    KawaiiStepperField(value: $pomodoroConfiguration.longBreakMin, range: 1...90, suffix: "min")
+                                }
+                            }
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
-                    .toggleStyle(.kawaii)
-
-                    if pomodoroConfiguration.longBreakEnabled {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Long Break Every")
-                                .font(.theme.body())
-                                .foregroundStyle(Color.theme.text)
-                            Text("Every \(pomodoroConfiguration.longBreakEveryN) sessions, the break is longer.")
-                                .font(.theme.caption())
-                                .foregroundStyle(Color.theme.text.opacity(0.55))
-                            WheelIntPicker(
-                                value: $pomodoroConfiguration.longBreakEveryN,
-                                range: 2...10,
-                                suffix: "sessions",
-                                wheelHeight: Self.sessionStartWheelHeight,
-                                valueFontSize: Self.sessionStartWheelFontSize
-                            )
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Long Break Length")
-                                .font(.theme.body())
-                                .foregroundStyle(Color.theme.text)
-                            Text("\(pomodoroConfiguration.longBreakMin.durationPhrase) on long breaks.")
-                                .font(.theme.caption())
-                                .foregroundStyle(Color.theme.text.opacity(0.55))
-                            WheelIntPicker(
-                                value: $pomodoroConfiguration.longBreakMin,
-                                range: 1...90,
-                                suffix: "min",
-                                wheelHeight: Self.sessionStartWheelHeight,
-                                valueFontSize: Self.sessionStartWheelFontSize
-                            )
-                        }
-                    }
+                    .subtleSettingCard()
                 }
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .clipped()
+        .animation(.snappy(duration: 0.2), value: pomodoroModeEnabled)
+        .animation(.snappy(duration: 0.2), value: pomodoroConfiguration.longBreakEnabled)
+    }
+
+    /// Subtle rounded card grouping one setting's bold title, muted subtext, and control —
+    /// used to reduce visual clutter versus the previous bare, ungrouped wheel pickers.
+    @ViewBuilder
+    private func settingCard<Content: View>(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.theme.body().weight(.semibold))
+                .foregroundStyle(Color.theme.text)
+            Text(subtitle)
+                .font(.theme.caption())
+                .foregroundStyle(Color.theme.text.opacity(0.55))
+            content()
+        }
+        .subtleSettingCard()
     }
 
     private var pomodoroStartFooter: String {
@@ -482,7 +490,10 @@ struct GroupDetailView: View {
             Text("Session Settings")
         } footer: {
             if isCreator {
-                Text("These toggles affect all session participants. Enable Downtime or Routines from the Schedules tab.")
+                // Schedules (Downtime/Routines) is temporarily hidden from the tab bar — see
+                // `visibleTabs`. Not referencing it here to avoid pointing users at a tab they
+                // can no longer see.
+                Text("These toggles affect all session participants.")
             } else {
                 Text("Only the group creator can change these settings.")
             }
@@ -584,14 +595,12 @@ struct GroupDetailView: View {
             } else {
                 ForEach(viewModel.members) { member in
                     HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.theme.primary.opacity(0.35))
-                                .frame(width: 30, height: 30)
-                            Image(systemName: "person.fill")
-                                .font(.caption)
-                                .foregroundStyle(Color.theme.text)
-                        }
+                        MemberAvatarView(
+                            name: member.displayName,
+                            avatarAssetName: viewModel.memberAvatars[member.id]?.avatarAssetName,
+                            photoURL: viewModel.memberAvatars[member.id]?.photoURL,
+                            size: 30
+                        )
 
                         Text(member.displayName)
                             .font(.theme.body())
@@ -659,5 +668,6 @@ struct GroupDetailView: View {
             currentUserUID: "user1"
         )
         .environmentObject(AuthViewModel())
+        .environmentObject(ThemeSettings.shared)
     }
 }

@@ -18,6 +18,8 @@ struct RootView: View {
     @StateObject private var authViewModel = AuthViewModel()
     @ObservedObject private var screenTimeAuth = AuthorizationManager.shared
     @ObservedObject private var appearanceSettings = AppearanceSettings.shared
+    @ObservedObject private var themeSettings = ThemeSettings.shared
+    @ObservedObject private var navState = AppNavigationState.shared
     @State private var profileGateState: ProfileGateState = .checking
 
     var body: some View {
@@ -43,6 +45,8 @@ struct RootView: View {
         }
         .environmentObject(authViewModel)
         .environmentObject(appearanceSettings)
+        .environmentObject(themeSettings)
+        .environmentObject(navState)
         .preferredColorScheme(appearanceSettings.preferredColorScheme)
         .animation(.easeInOut, value: authViewModel.isAuthenticated)
         .animation(.easeInOut, value: screenTimeAuth.isAuthorized)

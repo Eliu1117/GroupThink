@@ -10,7 +10,11 @@
 import Foundation
 
 /// Host-configured break rules for a Pomodoro cycle, snapshotted onto the session doc.
-struct PomodoroConfiguration: Equatable {
+/// `nonisolated`: this is a pure value type with no UI/actor affinity — the project's
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` setting would otherwise implicitly pin its
+/// `static var defaults` to the main actor, breaking use as a default parameter value in
+/// `nonisolated`/background contexts (e.g. `SessionService`).
+nonisolated struct PomodoroConfiguration: Equatable {
     var standardBreakMin: Int
     var longBreakEnabled: Bool
     var longBreakEveryN: Int

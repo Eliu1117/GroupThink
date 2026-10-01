@@ -6,7 +6,11 @@
 import FirebaseFirestore
 import Foundation
 
-struct UserProfile: Equatable {
+/// `nonisolated`: this is a pure data model with no UI/actor affinity — the project's
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` setting would otherwise implicitly pin
+/// `init(document:)` to the main actor, breaking its use inside `TaskGroup.addTask` closures
+/// (e.g. `UserService.fetchProfiles`), which are not main-actor-isolated.
+nonisolated struct UserProfile: Equatable {
     let displayName: String
     /// User-chosen profile identity set via Profile Setup. Falls back to `displayName`
     /// for accounts created before this feature existed (or that skipped setup).

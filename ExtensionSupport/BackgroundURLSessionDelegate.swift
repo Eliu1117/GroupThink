@@ -20,8 +20,13 @@ final class BackgroundURLSessionDelegate: NSObject, URLSessionDelegate, URLSessi
         backgroundCompletionHandler = handler
     }
 
-    @objc func urlSessionDidFinishEvents(forBackgroundURLSession sessionIdentifier: String) {
-        print("[Extension REST] Background session finished events — \(sessionIdentifier)")
+    // Parameter type must be `URLSession` (not `String`) to actually match
+    // `URLSessionDelegate`'s optional requirement — a mismatched type here means this method
+    // is never invoked by the system at all, silently dropping the completion handler and
+    // the background session would never be told its events were drained.
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        let identifier = session.configuration.identifier ?? "unknown"
+        print("[Extension REST] Background session finished events — \(identifier)")
         let handler = backgroundCompletionHandler
         backgroundCompletionHandler = nil
         handler?()

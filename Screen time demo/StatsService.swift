@@ -165,7 +165,6 @@ final class StatsService {
     /// members can't double-count the same day.
     private func updateGroupStreakIfEarned(groupID: String) async {
         let groupRef = db.collection("groups").document(groupID)
-        let calendar = Calendar.current
         let now = Date()
 
         do {

@@ -6,9 +6,13 @@
 //  and updated lifetime stats.
 //
 
+@preconcurrency import FirebaseFirestore
 import SwiftUI
 
 struct SessionSummaryView: View {
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     let summary: SessionSummary
 
     @Environment(\.dismiss) private var dismiss
@@ -38,12 +42,32 @@ struct SessionSummaryView: View {
                 }
             }
             .task {
-                let profiles = await UserService.shared.fetchProfiles(for: [summary.myUID])
-                withAnimation(.snappy) {
-                    profile = profiles[summary.myUID]
+                // The stats award write races with this view appearing, so a one-shot fetch
+                // often returned the total from BEFORE this session was credited. Listen live
+                // so the total updates as soon as the increment lands.
+                let stream = AsyncStream<UserProfile> { continuation in
+                    // `ListenerRegistration` isn't `Sendable`, but `onTermination` is a
+                    // `@Sendable` closure. Firestore documents `remove()` as safe to call from
+                    // any thread/queue, so `nonisolated(unsafe)` here is a deliberate,
+                    // documented opt-out rather than papering over a real data race.
+                    nonisolated(unsafe) let registration = Firestore.firestore()
+                        .collection("users")
+                        .document(summary.myUID)
+                        .addSnapshotListener { snapshot, _ in
+                            if let snapshot, let p = UserProfile(document: snapshot) {
+                                continuation.yield(p)
+                            }
+                        }
+                    continuation.onTermination = { _ in registration.remove() }
+                }
+                for await p in stream {
+                    withAnimation(.snappy) { profile = p }
                 }
             }
             .onAppear { runEntranceAnimation() }
+            // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+            // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+            .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
         }
     }
 
@@ -268,4 +292,5 @@ struct SessionSummaryView: View {
             wasStrictMode: true
         )
     )
+    .environmentObject(ThemeSettings.shared)
 }

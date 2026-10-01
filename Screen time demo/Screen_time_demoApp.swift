@@ -69,6 +69,7 @@ struct Screen_time_demoApp: App {
 
     init() {
         KawaiiAppearance.apply()
+        ThemeAssetPrefetcher.warmCache()
     }
 
     var body: some Scene {

@@ -18,6 +18,9 @@ struct GroupMember: Identifiable, Equatable {
 final class GroupDetailViewModel: ObservableObject {
     @Published private(set) var members: [GroupMember] = []
     @Published private(set) var memberNames: [String: String] = [:]
+    /// Avatar/photo info for each member, keyed by UID — lets the Members list and Focus
+    /// Roster show each person's actual chosen avatar instead of a generic placeholder icon.
+    @Published private(set) var memberAvatars: [String: UserProfile] = [:]
     @Published private(set) var isLoading = false
     @Published private(set) var isDeleting = false
     @Published private(set) var errorMessage: String?
@@ -95,15 +98,31 @@ final class GroupDetailViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoading = false }
 
-        var names = await UserService.shared.fetchDisplayNames(for: group.memberUids)
-
+        // `knownNames` (the Firebase Auth-derived name, used as an optimistic seed for the
+        // current user before Firestore responds) must only ever be a *fallback* — applying
+        // it AFTER the Firestore fetch used to let it clobber a real, user-chosen Profile
+        // Setup `username` with the generic Auth name whenever the Auth name happened to be
+        // non-placeholder (e.g. a real name from a non-Apple-relay sign-in). Seeding it first
+        // and letting the Firestore-resolved names (which already prefer `username`) override
+        // it fixes that, while still giving an immediate name before the fetch completes.
+        var names: [String: String] = [:]
         for (uid, name) in knownNames {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, trimmed != "User", trimmed != "Member" else { continue }
             names[uid] = trimmed
         }
 
+        // Names and avatars are independent reads of the same `users/{uid}` docs — fetch
+        // them concurrently rather than sequentially.
+        async let fetchedNames = UserService.shared.fetchDisplayNames(for: group.memberUids)
+        async let fetchedProfiles = UserService.shared.fetchProfiles(for: group.memberUids)
+
+        for (uid, name) in await fetchedNames {
+            names[uid] = name
+        }
+
         memberNames = names
+        memberAvatars = await fetchedProfiles
         members = group.memberUids.map { uid in
             GroupMember(id: uid, displayName: names[uid] ?? "Member")
         }

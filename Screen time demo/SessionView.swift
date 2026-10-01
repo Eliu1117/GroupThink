@@ -10,18 +10,29 @@ import SwiftUI
 struct SessionView: View {
     @ObservedObject var viewModel: SessionViewModel
     let memberNames: [String: String]
+    let memberAvatars: [String: UserProfile]
+
+    /// Explicitly *reading* `themeSettings.theme` here (via `.animation(value:)`, not just
+    /// declaring the property unused) guarantees this screen's buttons/cards actually repaint
+    /// on a live theme change — a merely-declared-but-unread `@EnvironmentObject` was found to
+    /// be an unreliable signal for forcing redraws of this screen's many `Color.theme.*`-driven
+    /// buttons and cards.
+    @EnvironmentObject private var themeSettings: ThemeSettings
 
     var body: some View {
-        if let session = viewModel.session {
-            switch session.status {
-            case .lobby:
-                lobbyContent(session)
-            case .active:
-                activeContent(session)
-            case .ended:
-                EmptyView()
+        SwiftUI.Group {
+            if let session = viewModel.session {
+                switch session.status {
+                case .lobby:
+                    lobbyContent(session)
+                case .active:
+                    activeContent(session)
+                case .ended:
+                    EmptyView()
+                }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 
     // MARK: - Lobby
@@ -57,6 +68,7 @@ struct SessionView: View {
                 FocusRosterView(
                     participants: viewModel.participants,
                     memberNames: memberNames,
+                    memberAvatars: memberAvatars,
                     hostUid: session.hostUid
                 )
 
@@ -221,6 +233,7 @@ struct SessionView: View {
                 FocusRosterView(
                     participants: viewModel.participants,
                     memberNames: memberNames,
+                    memberAvatars: memberAvatars,
                     hostUid: session.hostUid
                 )
 
@@ -372,7 +385,9 @@ struct SessionView: View {
     List {
         SessionView(
             viewModel: SessionViewModel(),
-            memberNames: ["u1": "Alex", "u2": "Jordan"]
+            memberNames: ["u1": "Alex", "u2": "Jordan"],
+            memberAvatars: [:]
         )
     }
+    .environmentObject(ThemeSettings.shared)
 }
