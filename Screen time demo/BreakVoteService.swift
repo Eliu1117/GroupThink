@@ -50,7 +50,7 @@ final class BreakVoteService {
     ) async throws {
         let ref = sessionRef(for: groupID)
 
-        try await db.runTransaction { transaction, errorPointer in
+        _ = try await db.runTransaction { transaction, errorPointer in
             let snapshot: DocumentSnapshot
             do {
                 snapshot = try transaction.getDocument(ref)
@@ -102,7 +102,7 @@ final class BreakVoteService {
     ) async throws {
         let ref = sessionRef(for: groupID)
 
-        try await db.runTransaction { transaction, errorPointer in
+        _ = try await db.runTransaction { transaction, errorPointer in
             let snapshot: DocumentSnapshot
             do {
                 snapshot = try transaction.getDocument(ref)
@@ -168,7 +168,7 @@ final class BreakVoteService {
     func expireVote(groupID: String, voteID: String) async throws {
         let ref = sessionRef(for: groupID)
 
-        try await db.runTransaction { transaction, errorPointer in
+        _ = try await db.runTransaction { transaction, errorPointer in
             let snapshot: DocumentSnapshot
             do {
                 snapshot = try transaction.getDocument(ref)

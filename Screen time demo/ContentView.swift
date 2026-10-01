@@ -10,6 +10,13 @@ import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
+    // Subscribing here (even though `themeSettings` isn't read directly) is what makes this
+    // screen's `body` re-run when the user picks a new theme. Without a direct
+    // `@EnvironmentObject`/`@ObservedObject` subscription on THIS specific view, SwiftUI has
+    // no reason to re-render it just because some ancestor (or an unrelated ViewModifier)
+    // reacted to the change — it previously required leaving and re-entering the tab to pick
+    // up a new `Color.theme.*` value. See `ThemeSettings`.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     // GRO-36: selectable durations matching the group session presets.
     // TODO: remove the "1" preset — added only for quick testing of session-end/cycle flows.
     private static let durationPresets = [1, 10, 15, 20, 25, 30, 45, 60, 90]
@@ -84,6 +91,9 @@ struct ContentView: View {
             .sheet(item: $personalSummary) { summary in
                 PersonalSessionSummaryView(summary: summary)
             }
+            // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+            // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+            .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
         }
     }
 
@@ -388,4 +398,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environmentObject(ThemeSettings.shared)
 }

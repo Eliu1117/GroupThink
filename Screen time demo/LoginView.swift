@@ -8,6 +8,9 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -65,10 +68,14 @@ struct LoginView: View {
         .padding(.horizontal, 32)
         .padding(.vertical, 24)
         .kawaiiBackground()
+        // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+        // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 }
 
 #Preview {
     LoginView()
         .environmentObject(AuthViewModel())
+        .environmentObject(ThemeSettings.shared)
 }

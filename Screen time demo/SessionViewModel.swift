@@ -21,6 +21,9 @@ final class SessionViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     /// GRO-21: Display names hydrated for every participant UID seen in this session.
     @Published private(set) var participantNames: [String: String] = [:]
+    /// Avatar/photo info hydrated alongside `participantNames`, so the Focus Roster can show
+    /// each participant's actual chosen avatar instead of a generic placeholder.
+    @Published private(set) var participantAvatars: [String: UserProfile] = [:]
     /// GRO-20: Exposed so GroupDetailView can conditionally show the start button.
     @Published private(set) var creatorOnlyStart: Bool = true
     /// Published when a session finishes; drives the animated summary sheet.
@@ -91,6 +94,7 @@ final class SessionViewModel: ObservableObject {
         session = nil
         participants = []
         participantNames = [:]
+        participantAvatars = [:]
         errorMessage = nil
         secondsRemaining = 0
         didApplyBlocking = false
@@ -149,6 +153,16 @@ final class SessionViewModel: ObservableObject {
         for (uid, name) in names {
             if participantNames[uid] == nil {
                 participantNames[uid] = name
+            }
+        }
+    }
+
+    /// Seeds avatar/photo info from the pre-fetched member roster, mirroring
+    /// `seedParticipantNames` — only fills gaps, never overwrites an already-hydrated value.
+    func seedParticipantAvatars(_ avatars: [String: UserProfile]) {
+        for (uid, profile) in avatars {
+            if participantAvatars[uid] == nil {
+                participantAvatars[uid] = profile
             }
         }
     }
@@ -274,7 +288,7 @@ final class SessionViewModel: ObservableObject {
     }
 
     func launchSession() async -> Bool {
-        guard let groupID, let currentUID, let session else { return false }
+        guard let groupID, let currentUID, session != nil else { return false }
 
         isSubmitting = true
         errorMessage = nil
@@ -648,18 +662,25 @@ final class SessionViewModel: ObservableObject {
         effectiveBlockSelection(whitelist: BlocklistStore.shared.whitelistSelection)
     }
 
-    /// GRO-21: Detects participant UIDs not yet in `participantNames` and fetches
-    /// their display names from Firestore in the background.
+    /// GRO-21: Detects participant UIDs not yet in `participantNames` and fetches their
+    /// display names (and avatar/photo info — see `participantAvatars`) from Firestore in
+    /// the background.
     private func hydrateParticipantNames(for session: StudySession) {
         let knownUIDs = Set(participantNames.keys)
         let newUIDs = Set(session.participants.keys).subtracting(knownUIDs)
         guard !newUIDs.isEmpty else { return }
 
         Task {
-            let fetched = await UserService.shared.fetchDisplayNames(for: Array(newUIDs))
+            async let fetchedNames = UserService.shared.fetchDisplayNames(for: Array(newUIDs))
+            async let fetchedProfiles = UserService.shared.fetchProfiles(for: Array(newUIDs))
+            let names = await fetchedNames
+            let profiles = await fetchedProfiles
             await MainActor.run {
-                for (uid, name) in fetched where self.participantNames[uid] == nil {
+                for (uid, name) in names where self.participantNames[uid] == nil {
                     self.participantNames[uid] = name
+                }
+                for (uid, profile) in profiles where self.participantAvatars[uid] == nil {
+                    self.participantAvatars[uid] = profile
                 }
             }
         }

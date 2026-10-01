@@ -13,6 +13,9 @@ struct DurationWheelPicker: View {
     var maxHours: Int = 23
     var wheelHeight: CGFloat = 148
     var valueFontSize: CGFloat = 22
+    // See `KawaiiCardModifier` — guarantees this redraws with fresh `Color.theme.*` values
+    // even when none of this view's other stored properties happen to change.
+    @ObservedObject private var themeSettings = ThemeSettings.shared
 
     private var valueFont: Font { .theme.heading(valueFontSize) }
 
@@ -88,6 +91,9 @@ struct WheelIntPicker: View {
     var isEnabled: Bool = true
     var wheelHeight: CGFloat = 110
     var valueFontSize: CGFloat = 18
+    // See `KawaiiCardModifier` — guarantees this redraws with fresh `Color.theme.*` values
+    // even when none of this view's other stored properties happen to change.
+    @ObservedObject private var themeSettings = ThemeSettings.shared
 
     private var valueFont: Font { .theme.heading(valueFontSize) }
 

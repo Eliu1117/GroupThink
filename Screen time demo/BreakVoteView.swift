@@ -12,6 +12,9 @@ import Combine
 import SwiftUI
 
 struct BreakVoteView: View {
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @ObservedObject var viewModel: SessionViewModel
     let currentUID: String?
 
@@ -46,33 +49,37 @@ struct BreakVoteView: View {
     // wraps this view in one. Adding a second NavigationStack causes a double nav bar
     // which renders the title on top of the content below.
     var body: some View {
-        VStack(spacing: 24) {
-            headerSection
-            countdownSection
-            tallySection
+        ScrollView {
+            VStack(spacing: 20) {
+                headerCard
+                tallyCard
 
-            if let vote {
-                switch vote.status {
-                case .pending:
-                    votingButtons(vote: vote)
-                case .passed:
-                    // GRO-39: a passed vote ends the current sub-session (no break timer for
-                    // it) — but in a back-to-back cycle that just moves things along to the
-                    // regular inter-session break rather than ending everything.
-                    resultBanner(
-                        text: viewModel.session?.hasMoreSessionsInCycle == true
-                            ? "Vote passed! 🎉 Wrapping up this session early."
-                            : "Vote passed! 🎉 Ending the session now.",
-                        color: .green
-                    )
-                case .failed, .expired:
-                    resultBanner(text: "Vote didn't pass. Stay focused!", color: .orange)
+                if let vote {
+                    switch vote.status {
+                    case .pending:
+                        votingSection
+                    case .passed:
+                        // GRO-39: a passed vote ends the current sub-session; in a
+                        // back-to-back cycle that just moves on to the regular break.
+                        resultBanner(
+                            icon: "checkmark.circle.fill",
+                            text: viewModel.session?.hasMoreSessionsInCycle == true
+                                ? "Vote passed! Wrapping up this session early."
+                                : "Vote passed! Ending the session now.",
+                            color: Color.theme.forestGreen
+                        )
+                    case .failed, .expired:
+                        resultBanner(
+                            icon: "xmark.circle.fill",
+                            text: "Vote didn't pass. Stay focused!",
+                            color: Color.theme.primary
+                        )
+                    }
                 }
             }
-
-            Spacer(minLength: 0)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
-        .padding()
         .kawaiiBackground()
         .navigationTitle("Break Vote")
         .navigationBarTitleDisplayMode(.inline)
@@ -81,6 +88,7 @@ struct BreakVoteView: View {
                 Button("Dismiss") {
                     viewModel.showBreakVoteSheet = false
                 }
+                .tint(Color.theme.text)
                 .disabled(vote?.isPending == true)
             }
         }
@@ -90,153 +98,158 @@ struct BreakVoteView: View {
         ) { _ in
             syncCountdown()
         }
+        // Explicitly *reading* `themeSettings.theme` guarantees repaint on theme change.
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 
-    // MARK: - Header
+    // MARK: - Header + countdown
 
-    // GRO-29: removed the outer VStack wrapper that was inside a NavigationStack header —
-    // content now stacks cleanly below the inline nav title without overlap.
-    // @ViewBuilder avoids a naming collision with the app's Group data model (SwiftUI.Group
-    // would be ambiguous in this context).
-    @ViewBuilder
-    private var headerSection: some View {
-        // GRO-39: a passed vote ends the session — the sheet now frames this as an
-        // early-end vote rather than a break request.
-        if let vote, let name = viewModel.participantNames[vote.initiatorUid] {
-            Text("\(name) wants to end the session early")
-                .font(.theme.heading(20))
-                .foregroundStyle(Color.theme.text)
-                .multilineTextAlignment(.center)
-                .padding(.top, 4)
-        } else {
-            Text("A member wants to end the session early")
-                .font(.theme.heading(20))
-                .foregroundStyle(Color.theme.text)
-                .multilineTextAlignment(.center)
-                .padding(.top, 4)
-}
-
+    private var initiatorName: String {
+        if let vote, let name = viewModel.participantNames[vote.initiatorUid] { return name }
+        return "A member"
     }
 
-    // MARK: - Countdown circle
-
-    private var countdownSection: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 10)
-
-            Circle()
-                .trim(
-                    from: 0,
-                    to: vote.map { CGFloat(voteSecondsRemaining) / CGFloat(max(1, $0.windowSeconds)) } ?? 0
-                )
-                .stroke(
-                    timerColor,
-                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                // GRO-29: animate only when ticking — the initial value is pre-seeded in init
-                // so there is no 0→value sweep when the sheet first appears.
-                .animation(.linear(duration: 1), value: voteSecondsRemaining)
-
-            VStack(spacing: 2) {
-                Text(formattedCountdown)
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
+    private var headerCard: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("\(initiatorName) wants to end early")
+                    .font(.theme.heading(20))
                     .foregroundStyle(Color.theme.text)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                Text("remaining")
-                    .font(.theme.caption())
-                    .foregroundStyle(Color.theme.text.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                Text("Everyone gets a say. Cast your vote before time runs out.")
+                    .font(.theme.caption(13))
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
+                    .multilineTextAlignment(.center)
             }
+
+            ZStack {
+                Circle()
+                    .stroke(Color.theme.secondary.opacity(0.35), lineWidth: 12)
+
+                Circle()
+                    .trim(
+                        from: 0,
+                        to: vote.map { CGFloat(voteSecondsRemaining) / CGFloat(max(1, $0.windowSeconds)) } ?? 0
+                    )
+                    .stroke(
+                        timerColor,
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    // GRO-29: only animate while ticking; initial value is pre-seeded.
+                    .animation(.linear(duration: 1), value: voteSecondsRemaining)
+
+                VStack(spacing: 2) {
+                    Text(formattedCountdown)
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.theme.text)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text("remaining")
+                        .font(.theme.caption())
+                        .foregroundStyle(Color.theme.text.opacity(0.55))
+                }
+            }
+            .frame(width: 170, height: 170)
         }
-        .frame(width: 160, height: 160)
+        .frame(maxWidth: .infinity)
+        .kawaiiCard(padding: 20)
     }
 
     // MARK: - Tally
 
-    private var tallySection: some View {
-        VStack(spacing: 8) {
+    private var tallyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("\(yesCount) to end early", systemImage: "hand.thumbsup.fill")
-                    .font(.theme.body())
-                    .foregroundStyle(Color(hex: "6FA287"))
-
+                    .font(.theme.headline(15))
+                    .foregroundStyle(Color.theme.forestGreen)
                 Spacer()
-                Text("Need \(neededForPass) to pass")
+                Text("Need \(neededForPass)")
                     .font(.theme.caption())
-                    .foregroundStyle(Color.theme.text.opacity(0.55))
+                    .foregroundStyle(Color.theme.text.opacity(0.6))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.theme.secondary.opacity(0.25), in: Capsule())
             }
-            ProgressView(value: Double(yesCount), total: Double(totalParticipants))
-                .tint(.green)
 
-            HStack {
-                Text("\(votedCount) of \(totalParticipants) voted")
-                    .font(.theme.caption())
-                    .foregroundStyle(Color.theme.text.opacity(0.55))
-                Spacer()
+            GeometryReader { geo in
+                let fraction = CGFloat(yesCount) / CGFloat(max(1, totalParticipants))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.theme.secondary.opacity(0.3))
+                    Capsule()
+                        .fill(Color.theme.forestGreen)
+                        .frame(width: max(0, min(1, fraction)) * geo.size.width)
+                        .animation(.spring(duration: 0.4), value: yesCount)
+                }
             }
+            .frame(height: 10)
+
+            Text("\(votedCount) of \(totalParticipants) voted")
+                .font(.theme.caption())
+                .foregroundStyle(Color.theme.text.opacity(0.55))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .kawaiiCard()
     }
 
-    // MARK: - Voting buttons
+    // MARK: - Voting
 
     @ViewBuilder
-    private func votingButtons(vote: BreakVote) -> some View {
+    private var votingSection: some View {
         if let myVote {
-            Label(
-                myVote ? "You voted: End early" : "You voted: Against",
-                systemImage: myVote ? "hand.thumbsup.fill" : "hand.thumbsdown.fill"
-            )
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(myVote ? .green : .orange)
-            .padding()
-            .background(
-                (myVote ? Color.green : Color.orange).opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
+            HStack(spacing: 10) {
+                Image(systemName: myVote ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                Text(myVote ? "You voted: End early" : "You voted: Keep going")
+                    .font(.theme.headline(15))
+            }
+            .foregroundStyle(Color.theme.text)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.theme.secondary.opacity(0.3), in: Capsule())
         } else {
-            HStack(spacing: 16) {
-                Button {
-                    Task { await viewModel.castBreakVote(inFavor: false) }
-                } label: {
-                    Label("Against", systemImage: "hand.thumbsdown.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(.orange)
-
+            VStack(spacing: 12) {
                 Button {
                     Task { await viewModel.castBreakVote(inFavor: true) }
                 } label: {
                     Label("End Early", systemImage: "hand.thumbsup.fill")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .buttonStyle(.kawaiiPrimary())
+
+                Button {
+                    Task { await viewModel.castBreakVote(inFavor: false) }
+                } label: {
+                    Label("Keep Going", systemImage: "hand.thumbsdown.fill")
+                }
+                .buttonStyle(.kawaiiOutlined)
             }
         }
     }
 
     // MARK: - Result banner
 
-    private func resultBanner(text: String, color: Color) -> some View {
-        Text(text)
-            .font(.headline)
-            .multilineTextAlignment(.center)
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-            .foregroundStyle(color)
+    private func resultBanner(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundStyle(color)
+            Text(text)
+                .font(.theme.headline(15))
+                .foregroundStyle(Color.theme.text)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     // MARK: - Helpers
 
     private var timerColor: Color {
-        guard let vote, vote.windowSeconds > 0 else { return .blue }
+        guard let vote, vote.windowSeconds > 0 else { return Color.theme.primary }
         let fraction = Double(voteSecondsRemaining) / Double(vote.windowSeconds)
-        return fraction > 0.4 ? .blue : (fraction > 0.2 ? .orange : .red)
+        return fraction > 0.25 ? Color.theme.primary : Color.red.opacity(0.85)
     }
 
     private var formattedCountdown: String {

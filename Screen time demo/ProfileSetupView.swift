@@ -19,6 +19,9 @@ struct ProfileSetupView: View {
     var onComplete: (() -> Void)?
 
     @EnvironmentObject private var authViewModel: AuthViewModel
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @StateObject private var viewModel = ProfileSetupViewModel()
     @Environment(\.dismiss) private var dismiss
     @FocusState private var usernameFieldFocused: Bool
@@ -60,6 +63,9 @@ struct ProfileSetupView: View {
         .onChange(of: viewModel.customAvatarItem) { _, _ in
             Task { await viewModel.loadCustomAvatarPreview() }
         }
+        // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+        // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 
     // MARK: - Header
@@ -118,31 +124,106 @@ struct ProfileSetupView: View {
                 .foregroundStyle(Color.theme.text)
 
             LazyVGrid(columns: columns, spacing: 18) {
-                ForEach(AvatarOption.allCases) { option in
+                ForEach(AvatarOption.primaryGridOptions) { option in
                     avatarCell(option)
                 }
                 uploadCustomCell
             }
+
+            // Only surfaced once a family with multiple skins (Boba, Energy Drink, Milk,
+            // Water, …) is the active selection — keeps the grid uncluttered and lets each
+            // family grow its own set of skins independently without stacking multiple
+            // picker rows at once.
+            if !viewModel.isCustomAvatarSelected && viewModel.selectedAvatar.hasSkinVariants {
+                skinPicker
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.snappy(duration: 0.2), value: viewModel.selectedAvatar.family)
     }
 
-    private func avatarCell(_ option: AvatarOption) -> some View {
-        let isSelected = !viewModel.isCustomAvatarSelected && viewModel.selectedAvatar == option
+    /// Each multi-skin family (Boba, Energy Drink, Milk, Water, …) is represented by a
+    /// single grid cell above (always showing as whichever skin is currently active for
+    /// that family, defaulting to Classic). This lets the user swap that cell's underlying
+    /// artwork/color scheme without the grid growing a separate entry per skin — mirrors
+    /// `SettingsView`'s theme-grid treatment.
+    private var skinPicker: some View {
+        let family = viewModel.selectedAvatar.family
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("\(family.displayName) Color")
+                .font(.theme.caption().weight(.semibold))
+                .foregroundStyle(Color.theme.text.opacity(0.7))
+
+            HStack(spacing: 14) {
+                ForEach(family.mainOption.familySkins) { skin in
+                    skinSwatch(skin)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func skinSwatch(_ skin: AvatarOption) -> some View {
+        let isSelected = !viewModel.isCustomAvatarSelected && viewModel.selectedAvatar == skin
 
         return Button {
             withAnimation(.snappy(duration: 0.2)) {
-                viewModel.selectAvatar(option)
+                viewModel.selectAvatar(skin)
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(skin.assetName)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(8)
+                    .frame(width: 44, height: 44)
+                    .background(Color.theme.secondary.opacity(0.18))
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().stroke(
+                            isSelected ? Color.theme.primary : Color.theme.text.opacity(0.15),
+                            lineWidth: isSelected ? 2.5 : 1
+                        )
+                    )
+
+                Text(skin.skinLabel)
+                    .font(.theme.caption(10))
+                    .foregroundStyle(Color.theme.text.opacity(isSelected ? 0.9 : 0.5))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The currently-active skin for a given family — whichever skin is selected if it
+    /// belongs to that family, falling back to that family's default ("Classic") skin
+    /// otherwise. Used so a family's main grid cell reflects whichever skin was last chosen.
+    private func activeSkin(for family: AvatarOption.Family) -> AvatarOption {
+        viewModel.selectedAvatar.family == family ? viewModel.selectedAvatar : family.mainOption
+    }
+
+    private func avatarCell(_ option: AvatarOption) -> some View {
+        // Every grid cell always represents whichever skin is currently active for its
+        // family, so its art/label/selection state track `activeSkin(for:)` rather than the
+        // static main-skin case passed in from `primaryGridOptions`.
+        let family = option.family
+        let displayOption = activeSkin(for: family)
+        let isSelected = !viewModel.isCustomAvatarSelected && viewModel.selectedAvatar.family == family
+
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                viewModel.selectAvatar(displayOption)
             }
         } label: {
             VStack(spacing: 6) {
                 avatarCircle(isSelected: isSelected) {
-                    Image(option.assetName)
+                    Image(displayOption.assetName)
                         .resizable()
                         .scaledToFit()
                         .padding(14)
                 }
 
-                Text(option.displayName)
+                Text(family.displayName)
                     .font(.theme.caption(11))
                     .foregroundStyle(Color.theme.text.opacity(isSelected ? 0.9 : 0.55))
                     .lineLimit(1)
@@ -268,4 +349,5 @@ struct ProfileSetupView: View {
 #Preview {
     ProfileSetupView(isOnboarding: true)
         .environmentObject(AuthViewModel())
+        .environmentObject(ThemeSettings.shared)
 }

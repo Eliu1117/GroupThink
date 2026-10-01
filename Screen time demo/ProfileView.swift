@@ -8,7 +8,10 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
-    @EnvironmentObject private var appearanceSettings: AppearanceSettings
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
+    @EnvironmentObject private var navState: AppNavigationState
     @StateObject private var profileViewModel = ProfileViewModel()
     @State private var showEditProfile = false
 
@@ -33,7 +36,7 @@ struct ProfileView: View {
 
                 editProfileSection
 
-                appearanceSection
+                settingsSection
 
                 if let errorMessage = profileViewModel.errorMessage {
                     Section {
@@ -65,6 +68,9 @@ struct ProfileView: View {
             .sheet(isPresented: $showEditProfile) {
                 ProfileSetupView(isOnboarding: false)
             }
+            // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+            // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+            .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
         }
     }
 
@@ -131,27 +137,25 @@ struct ProfileView: View {
         }
     }
 
-    private var appearanceSection: some View {
+    private var settingsSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Appearance", systemImage: "paintbrush.fill")
-                    .font(.theme.body())
-                    .foregroundStyle(Color.theme.text)
-
-                Picker("Appearance", selection: $appearanceSettings.mode) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
+            // Presented as a sheet attached to `MainTabView` (via `AppNavigationState`)
+            // rather than pushed with `NavigationLink`, so it's unaffected when "Apply
+            // Theme" forces this tab's content to rebuild — see `MainTabView`.
+            Button {
+                navState.isSettingsPresented = true
+            } label: {
+                KawaiiListRow(
+                    icon: "paintbrush.fill",
+                    iconTint: Color.theme.primary,
+                    title: "Settings",
+                    subtitle: "Color theme & appearance"
+                )
             }
-            .padding(.vertical, 4)
+            .buttonStyle(.kawaiiRow)
         } header: {
             Text("Settings")
                 .foregroundStyle(Color.theme.text.opacity(0.6))
-        } footer: {
-            Text("Auto follows your iPhone’s light or dark mode setting.")
-                .foregroundStyle(Color.theme.text.opacity(0.55))
         }
     }
 
@@ -226,4 +230,6 @@ struct ProfileView: View {
     ProfileView()
         .environmentObject(AuthViewModel())
         .environmentObject(AppearanceSettings.shared)
+        .environmentObject(ThemeSettings.shared)
+        .environmentObject(AppNavigationState.shared)
 }

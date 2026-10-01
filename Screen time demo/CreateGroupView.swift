@@ -6,6 +6,9 @@
 import SwiftUI
 
 struct CreateGroupView: View {
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @ObservedObject var viewModel: GroupsViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -66,6 +69,7 @@ struct CreateGroupView: View {
                     )
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
             .overlay {
                 if viewModel.isSubmitting {
                     ProgressView("Creating…")
@@ -79,4 +83,5 @@ struct CreateGroupView: View {
 
 #Preview {
     CreateGroupView(viewModel: GroupsViewModel())
+        .environmentObject(ThemeSettings.shared)
 }

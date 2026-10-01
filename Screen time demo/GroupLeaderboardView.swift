@@ -8,6 +8,9 @@
 import SwiftUI
 
 struct GroupLeaderboardView: View {
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     let group: Group
     let currentUserUID: String?
     let memberNames: [String: String]
@@ -49,6 +52,9 @@ struct GroupLeaderboardView: View {
         .task {
             await viewModel.load(group: group, knownNames: memberNames)
         }
+        // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+        // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+        .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
     }
 
     // MARK: - Group streak
@@ -176,5 +182,6 @@ struct GroupLeaderboardView: View {
             currentUserUID: "user1",
             memberNames: ["user1": "Ethan", "user2": "David"]
         )
+        .environmentObject(ThemeSettings.shared)
     }
 }

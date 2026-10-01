@@ -12,7 +12,11 @@ import SwiftUI
 struct FocusRosterView: View {
     let participants: [SessionParticipant]
     let memberNames: [String: String]
+    /// Each participant's avatar/photo info, keyed by UID — see `MemberAvatarView`.
+    var memberAvatars: [String: UserProfile] = [:]
     let hostUid: String
+    // See `KawaiiCardModifier` — guarantees this redraws with fresh `Color.theme.*` values.
+    @ObservedObject private var themeSettings = ThemeSettings.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -29,7 +33,9 @@ struct FocusRosterView: View {
                     FocusRosterRow(
                         name: memberNames[participant.id] ?? participant.id,
                         state: participant.state,
-                        isHost: participant.id == hostUid
+                        isHost: participant.id == hostUid,
+                        avatarAssetName: memberAvatars[participant.id]?.avatarAssetName,
+                        photoURL: memberAvatars[participant.id]?.photoURL
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -62,13 +68,23 @@ private struct FocusRosterRow: View {
     let name: String
     let state: ParticipantState
     let isHost: Bool
+    let avatarAssetName: String?
+    let photoURL: URL?
+    // See `KawaiiCardModifier` — guarantees this redraws with fresh `Color.theme.*` values
+    // even when `name`/`state`/`isHost` happen to be unchanged across a theme switch.
+    @ObservedObject private var themeSettings = ThemeSettings.shared
 
     var body: some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(presenceColor)
-                .frame(width: 12, height: 12)
-                .shadow(color: presenceColor.opacity(0.45), radius: 3)
+            ZStack(alignment: .bottomTrailing) {
+                MemberAvatarView(name: name, avatarAssetName: avatarAssetName, photoURL: photoURL, size: 36)
+
+                Circle()
+                    .fill(presenceColor)
+                    .frame(width: 12, height: 12)
+                    .overlay(Circle().stroke(Color.theme.surface, lineWidth: 2))
+                    .shadow(color: presenceColor.opacity(0.45), radius: 3)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {

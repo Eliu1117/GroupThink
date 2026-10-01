@@ -134,10 +134,18 @@ final class UserService {
         return profiles
     }
 
+    /// Returns the best name to show for this user — their own chosen Profile Setup
+    /// `username` when set, falling back to the Firebase Auth-derived `displayName`
+    /// otherwise. Previously this read `displayName` directly, which meant anyone who'd
+    /// signed in via Apple's "Hide My Email" private relay (where Apple withholds the real
+    /// name after the first authorization, leaving Firebase to fall back to a placeholder
+    /// like "User") would show that placeholder/garbage name everywhere — e.g. the Focus
+    /// Roster — even after they'd explicitly set a real username in Profile Setup, because
+    /// nothing here ever looked at the `username` field. `UserProfile(document:)` already
+    /// encodes the correct username-over-displayName precedence, so delegate to it.
     private func fetchDisplayName(uid: String) async throws -> String? {
         let snapshot = try await db.collection("users").document(uid).getDocument()
-        guard snapshot.exists, let data = snapshot.data() else { return nil }
-        return data["displayName"] as? String
+        return UserProfile(document: snapshot)?.username
     }
 
     // MARK: - Push tokens (Phase 4)

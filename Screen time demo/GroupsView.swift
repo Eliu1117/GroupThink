@@ -16,6 +16,9 @@ struct GroupNavigation: Hashable {
 
 struct GroupsView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    /// Subscribing here forces this screen's `body` to re-run on theme change — see the
+    /// comment on `ContentView`'s equivalent property for why this is needed.
+    @EnvironmentObject private var themeSettings: ThemeSettings
     @StateObject private var viewModel = GroupsViewModel()
 
     @State private var showCreateGroup = false
@@ -64,6 +67,9 @@ struct GroupsView: View {
                 navigationPath.append(GroupNavigation(group: group, autoStart: true))
                 viewModel.clearPendingNavigation()
             }
+            // Explicitly *reading* `themeSettings.theme` (not just declaring the property
+            // unused) guarantees this screen's buttons/cards actually repaint on theme change.
+            .animation(.easeInOut(duration: 0.2), value: themeSettings.theme)
         }
     }
 
@@ -211,4 +217,5 @@ struct GroupsView: View {
 #Preview {
     GroupsView()
         .environmentObject(AuthViewModel())
+        .environmentObject(ThemeSettings.shared)
 }
