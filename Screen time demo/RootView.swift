@@ -60,13 +60,28 @@ struct RootView: View {
                 print("[FCM] Token fetch on auth failed: \(error.localizedDescription)")
             }
         }
-        // Re-checks whenever Screen Time authorization flips true — covers both a fresh
-        // sign-in (auth already true, this fires once authorization catches up) and a cold
-        // launch where both are already true (the .task still fires once on first appear).
-        .task(id: screenTimeAuth.isAuthorized) {
+        // Re-checks whenever auth state, Screen Time authorization, OR the signed-in uid
+        // changes. `.task(id:)` only restarts when its id's VALUE changes — keying this on
+        // `screenTimeAuth.isAuthorized` alone was a bug: for a returning user that value is
+        // already `true` at cold launch, so the task fires once, immediately, before
+        // `authViewModel.isAuthenticated` (set asynchronously by Firebase's auth-state
+        // listener) has necessarily flipped true yet. The guard would fail, the task would
+        // exit having done nothing, and since `isAuthorized`'s value never changed again,
+        // the task would never re-fire — leaving `profileGateState` stuck at `.checking`
+        // (an infinite spinner) with no crash. Combining every dependency into the id fixes
+        // this regardless of which async signal (auth listener vs. authorization refresh)
+        // happens to resolve first.
+        .task(id: profileGateTaskID) {
             guard authViewModel.isAuthenticated, screenTimeAuth.isAuthorized, let uid = authViewModel.user?.uid else { return }
             await checkProfileSetup(uid: uid)
         }
+    }
+
+    /// Combines every piece of state `profileGateTaskID`'s task depends on into one
+    /// `Equatable` id, so the task reliably restarts no matter which async signal
+    /// (Firebase auth listener vs. Screen Time authorization refresh) resolves last.
+    private var profileGateTaskID: String {
+        "\(authViewModel.isAuthenticated)|\(screenTimeAuth.isAuthorized)|\(authViewModel.user?.uid ?? "")"
     }
 
     private func checkProfileSetup(uid: String) async {
